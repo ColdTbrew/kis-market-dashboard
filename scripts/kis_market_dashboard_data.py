@@ -73,14 +73,23 @@ def kospi_quote():
         "pct": chg.group(2).strip() if chg else "-",
     }
 
+def fmt_pct(v):
+    s = str(v)
+    return s if s.endswith('%') else f"{s}%"
+
 token = get_token()
 result = {
+    "title": "KR Market Dashboard",
+    "subtitle": "KIS + KOSPI 기준 · 전일 종가 대비",
     "cards": [
-        {"name": "KOSPI", "chart": "https://ssl.pstatic.net/imgstock/chart3/day90/KOSPI.png", **kospi_quote()},
-        {"name": "Samsung Elec.", "chart": "https://ssl.pstatic.net/imgfinance/chart/item/area/day/005930.png", **stock_quote(token, "005930")},
-        {"name": "SK Hynix", "chart": "https://ssl.pstatic.net/imgfinance/chart/item/area/day/000660.png", **stock_quote(token, "000660")},
-        {"name": "SK Telecom", "chart": "https://ssl.pstatic.net/imgfinance/chart/item/area/day/017670.png", **stock_quote(token, "017670")},
+        {"name": "KOSPI", "market": "KR Index", "chart": "https://ssl.pstatic.net/imgstock/chart3/day90/KOSPI.png", **kospi_quote()},
+        {"name": "Samsung Elec.", "market": "005930", "chart": "https://ssl.pstatic.net/imgfinance/chart/item/area/day/005930.png", **stock_quote(token, "005930")},
+        {"name": "SK Hynix", "market": "000660", "chart": "https://ssl.pstatic.net/imgfinance/chart/item/area/day/000660.png", **stock_quote(token, "000660")},
+        {"name": "SK Telecom", "market": "017670", "chart": "https://ssl.pstatic.net/imgfinance/chart/item/area/day/017670.png", **stock_quote(token, "017670")},
     ]
 }
+for c in result["cards"]:
+    if c.get("pct") not in (None, "-"):
+        c["pct"] = fmt_pct(c["pct"])
 OUT.write_text(json.dumps(result, ensure_ascii=False, indent=2))
 print(str(OUT))

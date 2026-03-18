@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KIS Market Dashboard Renderer</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#161e29; --line:#263244; --text:#eef2f7; --muted:#9fb0c3; --green:#2ecc71; --red:#ff5b6e; --gray:#c8d4e3; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:linear-gradient(180deg,#0b0f14,#121923); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; }
+    .wrap { width:1200px; min-height:1600px; padding:28px; margin:0 auto; }
+    .h1 { font-size:40px; font-weight:800; margin-bottom:8px; }
+    .sub { color:var(--muted); margin-bottom:22px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+    .name { font-size:28px; font-weight:700; margin-bottom:10px; }
+    .price { font-size:42px; font-weight:800; margin-bottom:8px; }
+    .meta { font-size:22px; color:var(--gray); margin-bottom:14px; }
+    .meta.up { color:var(--green); }
+    .meta.down { color:var(--red); }
+    .chart { width:100%; height:250px; object-fit:cover; background:#fff; border-radius:14px; }
+    .footer { margin-top:18px; color:#7f90a6; font-size:18px; }
+    .error { color:#ff9aa7; font-size:20px; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="h1" id="title">KR Market Dashboard</div>
+    <div class="sub" id="subtitle">Loading…</div>
+    <div id="app"></div>
+  </div>
+  <script>
+    const dataPath = './data/latest.json';
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const trendClass = pct => String(pct || '').startsWith('-') ? 'down' : (String(pct||'') && String(pct||'') !== '-' ? 'up' : '');
+    fetch(dataPath)
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('title').textContent = data.title || 'KR Market Dashboard';
+        document.getElementById('subtitle').textContent = data.subtitle || 'KIS renderer';
+        const cards = data.cards || [];
+        document.getElementById('app').innerHTML = `<div class="grid">${cards.map(c => {
+          const pctText = String(c.pct || '');
+          return `<div class="card"><div class="name">${esc(c.name)}</div><div class="price">${esc(c.price)}</div><div class="meta ${trendClass(pctText)}">Δ ${esc(c.diff)} · ${esc(pctText)}</div><img class="chart" src="${esc(c.chart)}" alt="${esc(c.name)} chart"><div class="footer">${esc(c.market || '')}</div></div>`;
+        }).join('')}</div>`;
+      })
+      .catch(err => {
+        document.getElementById('subtitle').textContent = 'Failed to render';
+        document.getElementById('app').innerHTML = `<div class="error">${esc(err && err.stack || err)}</div>`;
+      });
+  </script>
+</body>
+</html>
