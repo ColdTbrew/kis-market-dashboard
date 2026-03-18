@@ -229,7 +229,7 @@ def draw_chart(draw, box, chart, palette, market):
     max_minute = max(hhmmss_to_minutes(point["time_raw"]) for point in all_points)
     minute_span = max(1, max_minute - min_minute)
     dividers = []
-    candle_width = max(6, int(plot_width / max(72, minute_span / 5)))
+    candle_width = max(4, int(plot_width / max(96, minute_span / 5)))
     highest = None
     lowest = None
 
