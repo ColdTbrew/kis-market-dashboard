@@ -13,8 +13,8 @@ WIDTH = 1080
 PADDING = 32
 GAP = 24
 CARD_HEIGHT = 500
-SUMMARY_GAP = 18
-SUMMARY_HEIGHT = 142
+SUMMARY_GAP = 12
+SUMMARY_HEIGHT = 108
 HEADER_HEIGHT = 122
 BOTTOM_PADDING = 32
 COLS = 2
@@ -93,20 +93,12 @@ def summary_card_layout(cards, start_y):
     layouts = []
     if not cards:
         return layouts
-    cols = 2
-    card_width = (WIDTH - (PADDING * 2) - SUMMARY_GAP) // cols
-    index = 0
-    while index < len(cards):
-        remaining = len(cards) - index
-        if remaining == 1:
-            y = start_y + (index // cols) * (SUMMARY_HEIGHT + SUMMARY_GAP)
-            layouts.append((PADDING, y, WIDTH - PADDING, y + SUMMARY_HEIGHT))
-            break
-        row = index // cols
-        y0 = start_y + row * (SUMMARY_HEIGHT + SUMMARY_GAP)
-        layouts.append((PADDING, y0, PADDING + card_width, y0 + SUMMARY_HEIGHT))
-        layouts.append((PADDING + card_width + SUMMARY_GAP, y0, WIDTH - PADDING, y0 + SUMMARY_HEIGHT))
-        index += cols
+    cols = len(cards)
+    card_width = (WIDTH - (PADDING * 2) - SUMMARY_GAP * (cols - 1)) // cols
+    x = PADDING
+    for _ in cards:
+        layouts.append((x, start_y, x + card_width, start_y + SUMMARY_HEIGHT))
+        x += card_width + SUMMARY_GAP
     return layouts
 
 
@@ -327,14 +319,14 @@ def draw_card(draw, box, card):
 
 def draw_summary_card(draw, box, card):
     x0, y0, x1, y1 = box
-    rounded(draw, box, 24, fill="#ffffff", outline="#dbe6f0")
-    draw_text(draw, (x0 + 18, y0 + 16), card.get("name", "-"), FONT_SMALL, "#66788a")
+    rounded(draw, box, 22, fill="#ffffff", outline="#dbe6f0")
+    draw_text(draw, (x0 + 12, y0 + 10), card.get("name", "-"), FONT_AXIS, "#66788a")
     market = card.get("market", "")
     if market:
-        mw, mh = measure(FONT_TINY, market)
-        rounded(draw, (x1 - mw - 26, y0 + 14, x1 - 14, y0 + mh + 24), 10, fill="#f5f9fd", outline="#dbe6f0")
-        draw_text(draw, (x1 - mw - 20, y0 + 18), market, FONT_TINY, "#90a2b5")
-    draw_text(draw, (x0 + 18, y0 + 44), card.get("price", "-"), FONT_NAME, "#14202b")
+        mw, mh = measure(FONT_AXIS, market)
+        rounded(draw, (x1 - mw - 18, y0 + 8, x1 - 10, y0 + mh + 16), 9, fill="#f5f9fd", outline="#dbe6f0")
+        draw_text(draw, (x1 - mw - 14, y0 + 10), market, FONT_AXIS, "#90a2b5")
+    draw_text(draw, (x0 + 12, y0 + 34), card.get("price", "-"), FONT_META, "#14202b")
     pct = str(card.get("pct", ""))
     status = card.get("status", "")
     meta_color = "#059669" if pct.startswith("+") else "#dc2626" if pct.startswith("-") else "#64748b"
@@ -346,7 +338,7 @@ def draw_summary_card(draw, box, card):
         meta = f"{label} {diff} ({pct})".strip()
     else:
         meta = f"{label} {diff}".strip()
-    draw_text(draw, (x0 + 18, y0 + 96), meta, FONT_SMALL, meta_color)
+    draw_text(draw, (x0 + 12, y0 + 72), meta, FONT_AXIS, meta_color)
 
 
 def main():
@@ -355,7 +347,7 @@ def main():
     stock_cards = data.get("stock_cards", [])
     summary_y = PADDING + HEADER_HEIGHT
     summary_layouts = summary_card_layout(summary_cards, summary_y)
-    stocks_y = (max(box[3] for box in summary_layouts) + 30) if summary_layouts else (PADDING + HEADER_HEIGHT)
+    stocks_y = (max(box[3] for box in summary_layouts) + 22) if summary_layouts else (PADDING + HEADER_HEIGHT)
     layouts = stock_card_layout(stock_cards, stocks_y)
     content_bottom = max(
         [box[3] for box in summary_layouts] + [box[3] for box in layouts] + [PADDING + HEADER_HEIGHT + CARD_HEIGHT]
