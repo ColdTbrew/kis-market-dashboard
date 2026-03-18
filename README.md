@@ -16,8 +16,9 @@
 - `scripts/kis_market_dashboard_render.py`
   - Pillow 기반 네이티브 PNG 렌더러
   - 화이트 카드 UI 및 5분봉 캔들차트 생성
-- `scripts/kis_market_dashboard_image.sh`
-  - JSON 생성 → PNG 렌더 → 전송
+- `kis_market_dashboard.py`
+  - 단일 CLI 엔트리포인트
+  - 데이터 생성 / PNG 렌더 / 전송 / watchlist 관리
 - `pyproject.toml`
   - `uv` 기반 Python 의존성 관리
 
