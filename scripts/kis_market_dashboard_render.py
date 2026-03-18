@@ -92,7 +92,7 @@ def card_layout(cards):
 
 def chart_bounds(box):
     x0, y0, x1, y1 = box
-    chart_bottom = y1 - 122
+    chart_bottom = y1 - 78
     return x0 + 16, y0 + 188, x1 - 16, chart_bottom
 
 
@@ -304,18 +304,6 @@ def draw_card(draw, box, card):
     tag = f"KIS {interval}m candles" if interval else "KIS intraday"
     tag_width, _ = measure(FONT_SMALL, tag)
     draw_text(draw, (x1 - 20 - tag_width, footer_y), tag, FONT_SMALL, "#7b8a9b")
-    tabs = ["1일", "1주", "3달", "1년", "전체"]
-    tab_y0 = y1 - 92
-    tab_x = x0 + 20
-    for idx, tab in enumerate(tabs):
-        tw, th = measure(FONT_TAB, tab)
-        if idx == 0:
-            rounded(draw, (tab_x - 12, tab_y0 - 10, tab_x + tw + 12, tab_y0 + th + 10), 18, fill="#f3f5f7", outline=None)
-            draw_text(draw, (tab_x, tab_y0 - 1), tab, FONT_TAB, "#374151")
-            tab_x += tw + 42
-        else:
-            draw_text(draw, (tab_x, tab_y0 - 1), tab, FONT_TAB, "#a0acba")
-            tab_x += tw + 42
 
 
 def main():
