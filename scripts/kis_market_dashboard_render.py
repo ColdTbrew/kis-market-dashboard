@@ -212,7 +212,7 @@ def draw_chart(draw, box, chart, palette, market):
     segments = [segment for segment in chart.get("segments", []) if segment.get("points")]
     if not segments:
         draw_text(draw, (cx0 + 18, cy0 + 18), "No intraday data from KIS", FONT_SMALL, "#c2410c")
-        return
+        return {"highest": None, "lowest": None}
 
     all_points = flatten_segments(segments)
     prices = [value for point in all_points for value in (point["low"], point["high"])]
@@ -330,26 +330,14 @@ def draw_chart(draw, box, chart, palette, market):
                 outline=None,
             )
 
-    if highest is not None:
-        label = f"최고 {format_axis_value(highest['value'])}"
-        lw, lh = measure(FONT_SMALL, label)
-        lx = min(plot_x1 - lw, highest["x"] + 6)
-        ly = max(plot_y0, highest["y"] - lh - 10)
-        draw_text(draw, (lx, ly), label, FONT_SMALL, "#98a4b3")
-
-    if lowest is not None:
-        label = f"최저 {format_axis_value(lowest['value'])}"
-        lw, lh = measure(FONT_SMALL, label)
-        lx = max(plot_x0, lowest["x"] - 6)
-        ly = min(plot_y1 - lh, lowest["y"] + 8)
-        draw_text(draw, (lx, ly), label, FONT_SMALL, "#98a4b3")
-
     warnings = chart.get("warnings", [])
     if warnings:
         warning_y = cy1 + 12
         for warning in warnings[:2]:
             draw_text(draw, (cx0 + 2, warning_y), warning, FONT_TINY, "#c2410c")
             warning_y += 20
+
+    return {"highest": highest, "lowest": lowest}
 
 
 def draw_card(draw, box, card, palette):
@@ -371,7 +359,18 @@ def draw_card(draw, box, card, palette):
     meta_color = palette["up"] if pct.startswith("+") else palette["down"] if pct.startswith("-") else palette["flat"]
     draw_text(draw, (x0 + 22, y0 + 126), f"어제보다 {card.get('diff', '-')} ({pct})", FONT_META, meta_color)
 
-    draw_chart(draw, box, card.get("chart", {}), palette, card.get("market", ""))
+    extrema = draw_chart(draw, box, card.get("chart", {}), palette, card.get("market", ""))
+
+    stats_y = y1 - 66
+    left_text = "-"
+    right_text = "-"
+    if extrema.get("lowest") is not None:
+        left_text = f"최저 {format_axis_value(extrema['lowest']['value'])}"
+    if extrema.get("highest") is not None:
+        right_text = f"최고 {format_axis_value(extrema['highest']['value'])}"
+    draw_text(draw, (x0 + 22, stats_y), left_text, FONT_SMALL, "#98a4b3")
+    right_w, _ = measure(FONT_SMALL, right_text)
+    draw_text(draw, (x1 - 22 - right_w, stats_y), right_text, FONT_SMALL, "#98a4b3")
 
     footer_y = y1 - 36
     draw_text(draw, (x0 + 22, footer_y), "KIS Open API", FONT_SMALL, "#7b8a9b")
