@@ -12,23 +12,26 @@ PNG_PATH = Path(os.getenv("KIS_DASHBOARD_PNG", ROOT / "tmp" / "kis_market_dashbo
 WIDTH = 1440
 PADDING = 28
 GAP = 22
-CARD_HEIGHT = 540
+CARD_HEIGHT = 620
 HEADER_HEIGHT = 86
 BOTTOM_PADDING = 28
 COLS = 2
 
 
 def load_font(size, bold=False):
-    candidates = []
+    candidates = [
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/System/Library/Fonts/Supplemental/NotoSansGothic-Regular.ttf",
+        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
+    ]
     if bold:
         candidates.extend([
-            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
             "/System/Library/Fonts/Supplemental/HelveticaNeue.ttc",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
         ])
     candidates.extend([
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
         "/System/Library/Fonts/Supplemental/Arial.ttf",
-        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
     ])
 
     for candidate in candidates:
@@ -40,12 +43,13 @@ def load_font(size, bold=False):
 
 FONT_H1 = load_font(40, bold=True)
 FONT_SUB = load_font(18)
-FONT_NAME = load_font(31, bold=True)
+FONT_NAME = load_font(27, bold=True)
 FONT_PRICE = load_font(46, bold=True)
 FONT_META = load_font(22, bold=True)
 FONT_SMALL = load_font(16)
 FONT_TINY = load_font(13)
 FONT_AXIS = load_font(12)
+FONT_TAB = load_font(17, bold=True)
 
 
 def draw_text(draw, xy, text, font, fill):
@@ -88,8 +92,8 @@ def card_layout(cards):
 
 def chart_bounds(box):
     x0, y0, x1, y1 = box
-    chart_bottom = y1 - 72
-    return x0 + 16, y0 + 160, x1 - 16, chart_bottom
+    chart_bottom = y1 - 122
+    return x0 + 16, y0 + 188, x1 - 16, chart_bottom
 
 
 def flatten_segments(segments):
@@ -106,6 +110,7 @@ def flatten_segments(segments):
                 "high": float(point.get("high", point.get("price", 0))),
                 "low": float(point.get("low", point.get("price", 0))),
                 "close": float(point.get("close", point.get("price", 0))),
+                "volume": int(point.get("volume", 0)),
             })
     return merged
 
@@ -124,9 +129,9 @@ def hhmmss_to_minutes(value):
 
 def draw_chart(draw, box, chart):
     cx0, cy0, cx1, cy1 = chart_bounds(box)
-    rounded(draw, (cx0, cy0, cx1, cy1), 20, fill="#ffffff", outline="#dbe6f0")
-    inner = (cx0 + 12, cy0 + 14, cx1 - 12, cy1 - 14)
-    rounded(draw, inner, 14, fill="#f8fbff")
+    rounded(draw, (cx0, cy0, cx1, cy1), 20, fill="#ffffff", outline="#e5ebf2")
+    inner = (cx0 + 12, cy0 + 12, cx1 - 12, cy1 - 12)
+    rounded(draw, inner, 14, fill="#ffffff")
 
     segments = [segment for segment in chart.get("segments", []) if segment.get("points")]
     if not segments:
@@ -135,46 +140,34 @@ def draw_chart(draw, box, chart):
 
     all_points = flatten_segments(segments)
     prices = [value for point in all_points for value in (point["low"], point["high"])]
+    volumes = [point["volume"] for point in all_points]
     min_price = min(prices)
     max_price = max(prices)
     price_span = max(1, max_price - min_price)
-    plot_x0, plot_y0, plot_x1, plot_y1 = inner[0] + 18, inner[1] + 18, inner[2] - 18, inner[3] - 24
+    max_volume = max(volumes) if volumes else 1
+    plot_x0, plot_y0, plot_x1, plot_y1 = inner[0] + 18, inner[1] + 18, inner[2] - 18, inner[3] - 74
     plot_height = plot_y1 - plot_y0
     plot_width = plot_x1 - plot_x0
+    volume_y0 = plot_y1 + 24
+    volume_y1 = inner[3] - 20
+    volume_height = max(16, volume_y1 - volume_y0)
+
+    draw.line((plot_x0, volume_y0 - 14, plot_x1, volume_y0 - 14), fill="#eef2f6", width=2)
 
     for ratio in (0.0, 0.5, 1.0):
         y = plot_y0 + ratio * plot_height
-        draw.line((plot_x0, y, plot_x1, y), fill="#dfe8f2", width=1)
-        price_value = max_price - (price_span * ratio)
-        label = format_axis_value(price_value)
-        label_w, label_h = measure(FONT_AXIS, label)
-        pill_pad_x = 8
-        pill_pad_y = 4
-        text_x = plot_x1 - label_w - 8
-        text_y = max(plot_y0 + 2, y - label_h - 2)
-        rounded(
-            draw,
-            (
-                text_x - pill_pad_x,
-                text_y - pill_pad_y,
-                text_x + label_w + pill_pad_x,
-                text_y + label_h + pill_pad_y,
-            ),
-            10,
-            fill="#ffffff",
-            outline="#d6e1ec",
-        )
-        draw_text(draw, (text_x, text_y), label, FONT_AXIS, "#5f7286")
+        draw.line((plot_x0, y, plot_x1, y), fill="#f0f3f7", width=1)
 
     min_minute = min(hhmmss_to_minutes(point["time_raw"]) for point in all_points)
     max_minute = max(hhmmss_to_minutes(point["time_raw"]) for point in all_points)
     minute_span = max(1, max_minute - min_minute)
     dividers = []
     candle_width = max(6, int(plot_width / max(94, minute_span / 5)))
+    highest = None
+    lowest = None
 
     for segment_index, segment in enumerate(segments):
         seg_points = segment["points"]
-        color = segment.get("color", "#5ad7ff")
         converted = []
         for point in seg_points:
             minute = hhmmss_to_minutes(point["time_raw"])
@@ -189,13 +182,23 @@ def draw_chart(draw, box, chart):
                 "high": y_high,
                 "low": y_low,
                 "close": y_close,
+                "raw_high": point["high"],
+                "raw_low": point["low"],
+                "volume": point["volume"],
             })
 
         if converted:
             for candle in converted:
-                wick_color = color
-                body_fill = "#ffffff" if candle["close"] < candle["open"] else color
-                body_outline = color
+                if candle["close"] > candle["open"]:
+                    body_fill = "#f43f5e"
+                    body_outline = "#f43f5e"
+                elif candle["close"] < candle["open"]:
+                    body_fill = "#3b82f6"
+                    body_outline = "#3b82f6"
+                else:
+                    body_fill = "#b8c2cf"
+                    body_outline = "#b8c2cf"
+                wick_color = "#c7d0da"
                 draw.line((candle["x"], candle["high"], candle["x"], candle["low"]), fill=wick_color, width=1)
                 top = min(candle["open"], candle["close"])
                 bottom = max(candle["open"], candle["close"])
@@ -212,14 +215,42 @@ def draw_chart(draw, box, chart):
                     outline=body_outline,
                     width=1,
                 )
+                vol_h = 0 if max_volume == 0 else (candle["volume"] / max_volume) * volume_height
+                draw.rectangle(
+                    (
+                        candle["x"] - max(1, candle_width / 2),
+                        volume_y1 - vol_h,
+                        candle["x"] + max(1, candle_width / 2),
+                        volume_y1,
+                    ),
+                    fill="#d6dde7",
+                    outline=None,
+                )
+                if highest is None or candle["raw_high"] > highest["value"]:
+                    highest = {"value": candle["raw_high"], "x": candle["x"], "y": candle["high"]}
+                if lowest is None or candle["raw_low"] < lowest["value"]:
+                    lowest = {"value": candle["raw_low"], "x": candle["x"], "y": candle["low"]}
             band_x0 = converted[0]["x"]
-            band_x1 = converted[-1]["x"]
             if segment_index > 0:
                 divider_x = converted[0]["x"]
                 dividers.append(divider_x)
 
     for divider_x in dividers:
-        draw.line((divider_x, plot_y0, divider_x, plot_y1), fill="#cbd7e3", width=1)
+        draw.line((divider_x, plot_y0, divider_x, plot_y1), fill="#eef2f6", width=1)
+
+    if highest is not None:
+        label = f"최고 {format_axis_value(highest['value'])}"
+        lw, lh = measure(FONT_SMALL, label)
+        lx = min(plot_x1 - lw, highest["x"] + 6)
+        ly = max(plot_y0, highest["y"] - lh - 10)
+        draw_text(draw, (lx, ly), label, FONT_SMALL, "#98a4b3")
+
+    if lowest is not None:
+        label = f"최저 {format_axis_value(lowest['value'])}"
+        lw, lh = measure(FONT_SMALL, label)
+        lx = max(plot_x0, lowest["x"] - 6)
+        ly = min(plot_y1 - lh, lowest["y"] + 8)
+        draw_text(draw, (lx, ly), label, FONT_SMALL, "#98a4b3")
 
     axis_marks = [
         ("08:00", "080000"),
@@ -233,7 +264,7 @@ def draw_chart(draw, box, chart):
         if minute < min_minute or minute > max_minute:
             continue
         x = plot_x0 + (plot_width * (minute - min_minute) / minute_span)
-        draw.line((x, plot_y0, x, plot_y1), fill="#eef3f8", width=1)
+        draw.line((x, plot_y0, x, plot_y1), fill="#f5f7fa", width=1)
         text_w, _ = measure(FONT_AXIS, label)
         draw_text(draw, (x - text_w / 2, plot_y1 + 8), label, FONT_AXIS, "#7c8ea0")
 
@@ -250,7 +281,7 @@ def draw_card(draw, box, card):
     rounded(draw, box, 26, fill="#ffffff", outline="#dbe6f0")
 
     draw_text(draw, (x0 + 20, y0 + 22), card.get("name", "-"), FONT_NAME, "#14202b")
-    draw_text(draw, (x0 + 20, y0 + 72), card.get("price", "-"), FONT_PRICE, "#14202b")
+    draw_text(draw, (x0 + 20, y0 + 68), card.get("price", "-"), FONT_PRICE, "#14202b")
     market = card.get("market", "-")
     market_w, market_h = measure(FONT_TINY, market)
     pill_x1 = x1 - 22
@@ -262,16 +293,29 @@ def draw_card(draw, box, card):
 
     pct = str(card.get("pct", ""))
     meta_color = "#059669" if pct.startswith("+") else "#dc2626" if pct.startswith("-") else "#64748b"
-    draw_text(draw, (x0 + 20, y0 + 130), f"Δ {card.get('diff', '-')} · {pct}", FONT_META, meta_color)
+    draw_text(draw, (x0 + 20, y0 + 126), f"어제보다 {card.get('diff', '-')} ({pct})", FONT_META, meta_color)
+    draw_text(draw, (x0 + 20, y0 + 166), "차트", FONT_META, "#5c6978")
 
     draw_chart(draw, box, card.get("chart", {}))
 
-    footer_y = y1 - 36
+    footer_y = y1 - 38
     draw_text(draw, (x0 + 20, footer_y), "KIS Open API", FONT_SMALL, "#7b8a9b")
     interval = card.get("chart", {}).get("interval_minutes")
     tag = f"KIS {interval}m candles" if interval else "KIS intraday"
     tag_width, _ = measure(FONT_SMALL, tag)
     draw_text(draw, (x1 - 20 - tag_width, footer_y), tag, FONT_SMALL, "#7b8a9b")
+    tabs = ["1일", "1주", "3달", "1년", "전체"]
+    tab_y0 = y1 - 92
+    tab_x = x0 + 20
+    for idx, tab in enumerate(tabs):
+        tw, th = measure(FONT_TAB, tab)
+        if idx == 0:
+            rounded(draw, (tab_x - 12, tab_y0 - 10, tab_x + tw + 12, tab_y0 + th + 10), 18, fill="#f3f5f7", outline=None)
+            draw_text(draw, (tab_x, tab_y0 - 1), tab, FONT_TAB, "#374151")
+            tab_x += tw + 42
+        else:
+            draw_text(draw, (tab_x, tab_y0 - 1), tab, FONT_TAB, "#a0acba")
+            tab_x += tw + 42
 
 
 def main():
