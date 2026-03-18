@@ -100,9 +100,6 @@ uv run python kis_market_dashboard.py watchlist --help
 - `tmp/kis_market_dashboard.us.json`
 - `tmp/kis_market_dashboard.us.png`
 
-## JSON 스키마 예시
-- `schemas/dashboard.example.json`
-
 ## Planned Features
 - KOSDAQ / 환율 / 주요 지표 카드 추가
 - 관심 종목 Watchlist 확장
