@@ -17,10 +17,17 @@ TOKEN_CACHE = OUT.parent / ".kis_access_token.json"
 OUT.parent.mkdir(parents=True, exist_ok=True)
 
 WATCHLIST = [
-    {"type": "index", "name": "KOSPI", "code": "0001", "market": "KOSPI"},
     {"type": "stock", "name": "Samsung Elec.", "code": "005930", "market": "005930"},
     {"type": "stock", "name": "SK Hynix", "code": "000660", "market": "000660"},
     {"type": "stock", "name": "SK Telecom", "code": "017670", "market": "017670"},
+]
+
+SUMMARY_ITEMS = [
+    {"type": "kr_index", "name": "KOSPI", "code": "0001", "market": "KOSPI"},
+    {"type": "kr_index", "name": "KOSDAQ", "code": "1001", "market": "KOSDAQ"},
+    {"type": "overseas_index", "name": "NASDAQ", "code": "NDX", "market": "NASDAQ-100", "label": "전일 종가", "price_digits": 2},
+    {"type": "fx", "name": "USD/KRW", "code": "XFX@KRW", "market": "FX", "label": "환율", "price_digits": 2},
+    {"type": "commodity", "name": "WTI", "code": "CL", "market": "NYMEX", "label": "유가", "price_digits": 2},
 ]
 
 if SECRETS_PATH.exists() and (not APPKEY or not APPSECRET):
@@ -514,9 +521,83 @@ def build_index_card(token, name, code, market):
     }
 
 
-def build_card(token, item):
-    if item["type"] == "index":
-        return build_index_card(token, item["name"], item["code"], item["market"])
+def overseas_index_quote_card(token, code, digits=2):
+    data = kis_get(
+        token,
+        "/uapi/overseas-price/v1/quotations/inquire-time-indexchartprice",
+        {
+            "FID_COND_MRKT_DIV_CODE": "N",
+            "FID_INPUT_ISCD": code,
+            "FID_HOUR_CLS_CODE": "0",
+            "FID_PW_DATA_INCU_YN": "Y",
+        },
+        "FHKST03030200",
+    )
+    out = data.get("output1", {})
+    raw_price = parse_number(out.get("ovrs_nmix_prpr"))
+    return {
+        "price": format_decimal(raw_price, digits=digits),
+        "diff": format_pct_or_diff_decimal(out.get("ovrs_nmix_prdy_vrss"), out.get("prdy_vrss_sign"), digits=digits),
+        "pct": format_pct(out.get("prdy_ctrt"), out.get("prdy_vrss_sign")),
+        "raw_price": raw_price or 0.0,
+        "name": out.get("hts_kor_isnm", ""),
+    }
+
+
+def unavailable_summary_card(item, detail):
+    return {
+        "name": item["name"],
+        "market": item["market"],
+        "label": item.get("label", ""),
+        "price": "-",
+        "diff": detail,
+        "pct": "",
+        "status": "unavailable",
+    }
+
+
+def build_summary_card(token, item):
+    if item["type"] == "kr_index":
+        quote = index_quote_card(token, item["code"])
+        return {
+            "name": item["name"],
+            "market": item["market"],
+            "label": item.get("label", ""),
+            "price": quote["price"],
+            "diff": quote["diff"],
+            "pct": quote["pct"],
+        }
+
+    if item["type"] == "overseas_index":
+        quote = overseas_index_quote_card(token, item["code"], digits=item.get("price_digits", 2))
+        if quote["raw_price"] == 0:
+            return unavailable_summary_card(item, "KIS 시세 없음")
+        return {
+            "name": item["name"],
+            "market": item["market"],
+            "label": item.get("label", ""),
+            "price": quote["price"],
+            "diff": quote["diff"],
+            "pct": quote["pct"],
+        }
+
+    if item["type"] == "fx":
+        return unavailable_summary_card(item, "KIS 코드 확인중")
+
+    if item["type"] == "commodity":
+        return unavailable_summary_card(item, "계좌 권한 필요")
+
+    return {
+        "name": item["name"],
+        "market": item["market"],
+        "label": item.get("label", ""),
+        "price": "-",
+        "diff": "미지원",
+        "pct": "",
+    }
+
+
+def build_stock_entry(token, item):
     return build_stock_card(token, item["name"], item["code"], item["market"])
 
 
@@ -524,9 +605,10 @@ def main():
     token = get_token()
     result = {
         "title": "KR Market Dashboard",
-        "subtitle": "KIS intraday · KOSPI + NXT to KRX session flow",
+        "subtitle": "KIS intraday · macro snapshot + stock session flow",
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "cards": [build_card(token, item) for item in WATCHLIST],
+        "summary_cards": [build_summary_card(token, item) for item in SUMMARY_ITEMS],
+        "stock_cards": [build_stock_entry(token, item) for item in WATCHLIST],
     }
     OUT.write_text(json.dumps(result, ensure_ascii=False, indent=2))
     print(str(OUT))

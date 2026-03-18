@@ -13,6 +13,8 @@ WIDTH = 1440
 PADDING = 28
 GAP = 22
 CARD_HEIGHT = 620
+SUMMARY_GAP = 16
+SUMMARY_HEIGHT = 138
 HEADER_HEIGHT = 86
 BOTTOM_PADDING = 28
 COLS = 2
@@ -70,9 +72,9 @@ def draw_line(draw, points, fill, width):
         draw.line(points, fill=fill, width=width, joint="curve")
 
 
-def card_layout(cards):
+def stock_card_layout(cards, start_y):
     layouts = []
-    y = PADDING + HEADER_HEIGHT
+    y = start_y
 
     if len(cards) <= 3:
         for _ in cards:
@@ -85,8 +87,21 @@ def card_layout(cards):
         row = index // COLS
         col = index % COLS
         x0 = PADDING + col * (card_width + GAP)
-        y0 = PADDING + HEADER_HEIGHT + row * (CARD_HEIGHT + GAP)
+        y0 = start_y + row * (CARD_HEIGHT + GAP)
         layouts.append((x0, y0, x0 + card_width, y0 + CARD_HEIGHT))
+    return layouts
+
+
+def summary_card_layout(cards, start_y):
+    layouts = []
+    if not cards:
+        return layouts
+    cols = len(cards)
+    card_width = (WIDTH - (PADDING * 2) - SUMMARY_GAP * (cols - 1)) // cols
+    x = PADDING
+    for _ in cards:
+        layouts.append((x, start_y, x + card_width, start_y + SUMMARY_HEIGHT))
+        x += card_width + SUMMARY_GAP
     return layouts
 
 
@@ -306,11 +321,41 @@ def draw_card(draw, box, card):
     draw_text(draw, (x1 - 20 - tag_width, footer_y), tag, FONT_SMALL, "#7b8a9b")
 
 
+def draw_summary_card(draw, box, card):
+    x0, y0, x1, y1 = box
+    rounded(draw, box, 22, fill="#ffffff", outline="#dbe6f0")
+    draw_text(draw, (x0 + 16, y0 + 16), card.get("name", "-"), FONT_SMALL, "#66788a")
+    market = card.get("market", "")
+    if market:
+        mw, mh = measure(FONT_TINY, market)
+        rounded(draw, (x1 - mw - 24, y0 + 14, x1 - 12, y0 + mh + 22), 10, fill="#f5f9fd", outline="#dbe6f0")
+        draw_text(draw, (x1 - mw - 18, y0 + 18), market, FONT_TINY, "#90a2b5")
+    draw_text(draw, (x0 + 16, y0 + 46), card.get("price", "-"), FONT_NAME, "#14202b")
+    pct = str(card.get("pct", ""))
+    status = card.get("status", "")
+    meta_color = "#059669" if pct.startswith("+") else "#dc2626" if pct.startswith("-") else "#64748b"
+    if status == "unavailable":
+        meta_color = "#94a3b8"
+    label = card.get("label", "")
+    diff = card.get("diff", "-")
+    if pct:
+        meta = f"{label} {diff} ({pct})".strip()
+    else:
+        meta = f"{label} {diff}".strip()
+    draw_text(draw, (x0 + 16, y0 + 88), meta, FONT_SMALL, meta_color)
+
+
 def main():
     data = json.loads(JSON_PATH.read_text())
-    cards = data.get("cards", [])
-    layouts = card_layout(cards)
-    content_bottom = max((box[3] for box in layouts), default=PADDING + HEADER_HEIGHT + CARD_HEIGHT)
+    summary_cards = data.get("summary_cards", [])
+    stock_cards = data.get("stock_cards", [])
+    summary_y = PADDING + HEADER_HEIGHT
+    summary_layouts = summary_card_layout(summary_cards, summary_y)
+    stocks_y = (summary_layouts[0][3] + 28) if summary_layouts else (PADDING + HEADER_HEIGHT)
+    layouts = stock_card_layout(stock_cards, stocks_y)
+    content_bottom = max(
+        [box[3] for box in summary_layouts] + [box[3] for box in layouts] + [PADDING + HEADER_HEIGHT + CARD_HEIGHT]
+    )
     height = content_bottom + BOTTOM_PADDING
 
     image = Image.new("RGBA", (WIDTH, height), "#f5f8fb")
@@ -336,7 +381,10 @@ def main():
         stamp_w, _ = measure(FONT_TINY, stamp)
         draw_text(draw, (WIDTH - PADDING - stamp_w, PADDING + 10), stamp, FONT_TINY, "#93a4b5")
 
-    for idx, card in enumerate(cards):
+    for idx, card in enumerate(summary_cards):
+        draw_summary_card(draw, summary_layouts[idx], card)
+
+    for idx, card in enumerate(stock_cards):
         draw_card(draw, layouts[idx], card)
 
     PNG_PATH.parent.mkdir(parents=True, exist_ok=True)
