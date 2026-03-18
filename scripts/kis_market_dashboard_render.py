@@ -138,6 +138,10 @@ def draw_chart(draw, box, chart):
     for ratio in (0.0, 0.5, 1.0):
         y = plot_y0 + ratio * plot_height
         draw.line((plot_x0, y, plot_x1, y), fill="#e5edf5", width=1)
+        price_value = max_price - (price_span * ratio)
+        label = f"{int(round(price_value)):,}"
+        label_w, label_h = measure(FONT_AXIS, label)
+        draw_text(draw, (plot_x1 - label_w, max(plot_y0, y - label_h - 2)), label, FONT_AXIS, "#9aabbb")
 
     min_minute = min(hhmmss_to_minutes(point["time_raw"]) for point in all_points)
     max_minute = max(hhmmss_to_minutes(point["time_raw"]) for point in all_points)
@@ -206,6 +210,12 @@ def draw_chart(draw, box, chart):
         py0 = plot_y0 + 8
         px1 = px0 + text_w + 16
         py1 = py0 + text_h + 8
+        if px0 < plot_x0:
+            px1 += plot_x0 - px0
+            px0 = plot_x0
+        if px1 > plot_x1:
+            px0 -= px1 - plot_x1
+            px1 = plot_x1
         rounded(draw, (px0, py0, px1, py1), 10, fill="#ffffff", outline="#d9e4ee")
         draw_text(draw, (px0 + 8, py0 + 4), item["label"], FONT_AXIS, item["color"])
 
