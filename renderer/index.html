@@ -5,21 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KIS Market Dashboard Renderer</title>
   <style>
-    :root { --bg:#0b0f14; --panel:#161e29; --line:#263244; --text:#eef2f7; --muted:#9fb0c3; --green:#2ecc71; --red:#ff5b6e; --gray:#c8d4e3; }
+    :root { --bg:#09111b; --panel:#162231; --line:#2c4056; --text:#eef2f7; --muted:#96a8bc; --green:#33d17a; --red:#ff6b7a; --gray:#c8d4e3; --track:#0f1824; }
     * { box-sizing: border-box; }
-    body { margin:0; background:linear-gradient(180deg,#0b0f14,#121923); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; }
+    body { margin:0; background:
+      radial-gradient(circle at top left, rgba(57, 147, 255, 0.12), transparent 28%),
+      radial-gradient(circle at top right, rgba(255, 143, 107, 0.10), transparent 24%),
+      linear-gradient(180deg,#09111b,#111b29);
+      color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; }
     .wrap { width:1200px; min-height:1600px; padding:28px; margin:0 auto; }
     .h1 { font-size:40px; font-weight:800; margin-bottom:8px; }
     .sub { color:var(--muted); margin-bottom:22px; }
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
-    .card { background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+    .card { background:rgba(22,34,49,.92); border:1px solid var(--line); border-radius:22px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
     .name { font-size:28px; font-weight:700; margin-bottom:10px; }
     .price { font-size:42px; font-weight:800; margin-bottom:8px; }
     .meta { font-size:22px; color:var(--gray); margin-bottom:14px; }
     .meta.up { color:var(--green); }
     .meta.down { color:var(--red); }
-    .chart { width:100%; height:250px; object-fit:cover; background:#fff; border-radius:14px; }
-    .footer { margin-top:18px; color:#7f90a6; font-size:18px; }
+    .chart-wrap { background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01)); border:1px solid rgba(255,255,255,.06); border-radius:16px; padding:12px; }
+    .chart-svg { width:100%; height:250px; display:block; border-radius:12px; background:var(--track); }
+    .legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; color:var(--muted); font-size:15px; }
+    .legend-item { display:flex; align-items:center; gap:8px; }
+    .legend-swatch { width:10px; height:10px; border-radius:999px; display:inline-block; }
+    .warnings { margin-top:12px; color:#ffb6bf; font-size:15px; }
+    .footer { margin-top:18px; color:#7f90a6; font-size:18px; display:flex; justify-content:space-between; gap:16px; }
+    .session-note { color:var(--muted); font-size:16px; }
     .error { color:#ff9aa7; font-size:20px; white-space:pre-wrap; }
   </style>
 </head>
@@ -29,25 +39,115 @@
     <div class="sub" id="subtitle">Loading…</div>
     <div id="app"></div>
   </div>
+  <script src="./data/latest.js"></script>
   <script>
     const dataPath = './data/latest.json';
     const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     const trendClass = pct => String(pct || '').startsWith('-') ? 'down' : (String(pct||'') && String(pct||'') !== '-' ? 'up' : '');
-    fetch(dataPath)
-      .then(r => r.json())
-      .then(data => {
+    const toNum = value => Number(value ?? 0);
+
+    function buildChart(chart) {
+      const segments = Array.isArray(chart?.segments) ? chart.segments.filter(seg => Array.isArray(seg.points) && seg.points.length) : [];
+      if (!segments.length) {
+        return '<div class="error">No intraday chart data from KIS.</div>';
+      }
+
+      const width = 520;
+      const height = 250;
+      const padding = { top: 18, right: 16, bottom: 26, left: 16 };
+      const allPoints = segments.flatMap(seg => seg.points.map(point => ({ ...point, color: seg.color, session: seg.session })));
+      const prices = allPoints.map(point => toNum(point.price));
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      const span = Math.max(1, maxPrice - minPrice);
+      const slotWidth = Math.max(1, (width - padding.left - padding.right) / Math.max(1, allPoints.length - 1));
+      const indexed = allPoints.map((point, index) => ({
+        ...point,
+        x: padding.left + slotWidth * index,
+        y: padding.top + ((maxPrice - toNum(point.price)) / span) * (height - padding.top - padding.bottom),
+      }));
+
+      let offset = 0;
+      const paths = segments.map(seg => {
+        const segPoints = indexed.slice(offset, offset + seg.points.length);
+        offset += seg.points.length;
+        const d = segPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ');
+        const startX = segPoints[0].x;
+        const endX = segPoints[segPoints.length - 1].x;
+        return {
+          session: seg.session,
+          color: seg.color,
+          d,
+          startX,
+          endX,
+          firstTime: seg.points[0].time,
+          lastTime: seg.points[seg.points.length - 1].time,
+        };
+      });
+
+      const grid = [0, 0.5, 1].map(ratio => {
+        const y = padding.top + ratio * (height - padding.top - padding.bottom);
+        return `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />`;
+      }).join('');
+
+      const bands = paths.map(path => {
+        const w = Math.max(2, path.endX - path.startX);
+        return `<rect x="${path.startX}" y="${padding.top}" width="${w}" height="${height - padding.top - padding.bottom}" fill="${path.color}18" />`;
+      }).join('');
+
+      const pathEls = paths.map(path =>
+        `<path d="${path.d}" fill="none" stroke="${path.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />`
+      ).join('');
+
+      const labels = [
+        indexed[0],
+        indexed[indexed.length - 1],
+      ].filter(Boolean).map(point =>
+        `<text x="${point.x}" y="${height - 8}" fill="rgba(238,242,247,0.72)" font-size="12" text-anchor="${point === indexed[0] ? 'start' : 'end'}">${esc(point.time)}</text>`
+      ).join('');
+
+      const legend = paths.map(path =>
+        `<div class="legend-item"><span class="legend-swatch" style="background:${esc(path.color)}"></span><span>${esc(path.session)} ${esc(path.firstTime)}-${esc(path.lastTime)}</span></div>`
+      ).join('');
+
+      const warnings = (chart.warnings || []).length
+        ? `<div class="warnings">${chart.warnings.map(esc).join('<br>')}</div>`
+        : '';
+
+      return `
+        <div class="chart-wrap">
+          <svg class="chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="Intraday chart">
+            ${grid}
+            ${bands}
+            ${pathEls}
+            ${labels}
+          </svg>
+          <div class="legend">${legend}</div>
+          ${warnings}
+        </div>`;
+    }
+
+    const render = data => {
         document.getElementById('title').textContent = data.title || 'KR Market Dashboard';
         document.getElementById('subtitle').textContent = data.subtitle || 'KIS renderer';
         const cards = data.cards || [];
         document.getElementById('app').innerHTML = `<div class="grid">${cards.map(c => {
           const pctText = String(c.pct || '');
-          return `<div class="card"><div class="name">${esc(c.name)}</div><div class="price">${esc(c.price)}</div><div class="meta ${trendClass(pctText)}">Δ ${esc(c.diff)} · ${esc(pctText)}</div><img class="chart" src="${esc(c.chart)}" alt="${esc(c.name)} chart"><div class="footer">${esc(c.market || '')}</div></div>`;
+          return `<div class="card"><div class="name">${esc(c.name)}</div><div class="price">${esc(c.price)}</div><div class="meta ${trendClass(pctText)}">Δ ${esc(c.diff)} · ${esc(pctText)}</div>${buildChart(c.chart)}<div class="footer"><span>${esc(c.market || '')}</span><span class="session-note">KIS only intraday</span></div></div>`;
         }).join('')}</div>`;
-      })
-      .catch(err => {
+      };
+    const renderError = err => {
         document.getElementById('subtitle').textContent = 'Failed to render';
         document.getElementById('app').innerHTML = `<div class="error">${esc(err && err.stack || err)}</div>`;
-      });
+      };
+    if (window.__DASHBOARD_DATA__) {
+      render(window.__DASHBOARD_DATA__);
+    } else {
+      fetch(dataPath)
+        .then(r => r.json())
+        .then(render)
+        .catch(renderError);
+    }
   </script>
 </body>
 </html>

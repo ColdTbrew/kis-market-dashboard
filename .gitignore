@@ -1,4 +1,7 @@
 tmp/
+renderer/data/latest.json
+renderer/data/latest.js
+.venv/
 .env
 .env.local
 .env.*.local
