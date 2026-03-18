@@ -180,7 +180,21 @@ def build_axis_marks(all_points):
     return [(minutes_to_label(minutes[index]), minutes[index]) for index in indices]
 
 
-def draw_chart(draw, box, chart, palette):
+def candle_direction(point, previous_close, market):
+    if str(market or "").lower() == "us" and previous_close is not None:
+        if point["close"] > previous_close:
+            return "up"
+        if point["close"] < previous_close:
+            return "down"
+        return "flat"
+    if point["close"] > point["open"]:
+        return "up"
+    if point["close"] < point["open"]:
+        return "down"
+    return "flat"
+
+
+def draw_chart(draw, box, chart, palette, market):
     cx0, cy0, cx1, cy1 = chart_bounds(box)
     rounded(draw, (cx0, cy0, cx1, cy1), 20, fill="#ffffff", outline="#e5ebf2")
     inner = (cx0 + 12, cy0 + 12, cx1 - 12, cy1 - 12)
@@ -222,6 +236,7 @@ def draw_chart(draw, box, chart, palette):
     for segment_index, segment in enumerate(segments):
         seg_points = segment["points"]
         converted = []
+        previous_close = None
         for point in seg_points:
             minute = hhmmss_to_minutes(point["time_raw"])
             x = plot_x0 + (plot_width * (minute - min_minute) / minute_span)
@@ -237,15 +252,18 @@ def draw_chart(draw, box, chart, palette):
                 "close": y_close,
                 "raw_high": point["high"],
                 "raw_low": point["low"],
+                "raw_close": point["close"],
+                "direction": candle_direction(point, previous_close, market),
                 "volume": point["volume"],
             })
+            previous_close = point["close"]
 
         if converted:
             for candle in converted:
-                if candle["close"] > candle["open"]:
+                if candle["direction"] == "up":
                     body_fill = palette["candle_up"]
                     body_outline = palette["candle_up"]
-                elif candle["close"] < candle["open"]:
+                elif candle["direction"] == "down":
                     body_fill = palette["candle_down"]
                     body_outline = palette["candle_down"]
                 else:
@@ -339,7 +357,7 @@ def draw_card(draw, box, card, palette):
     meta_color = palette["up"] if pct.startswith("+") else palette["down"] if pct.startswith("-") else palette["flat"]
     draw_text(draw, (x0 + 22, y0 + 126), f"어제보다 {card.get('diff', '-')} ({pct})", FONT_META, meta_color)
 
-    draw_chart(draw, box, card.get("chart", {}), palette)
+    draw_chart(draw, box, card.get("chart", {}), palette, card.get("market", ""))
 
     footer_y = y1 - 36
     draw_text(draw, (x0 + 22, footer_y), "KIS Open API", FONT_SMALL, "#7b8a9b")
