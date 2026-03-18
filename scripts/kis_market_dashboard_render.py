@@ -94,7 +94,7 @@ def chart_bounds(box):
 
 def flatten_segments(segments):
     merged = []
-    for segment in segments:
+    for segment_index, segment in enumerate(segments):
         for point in segment.get("points", []):
             merged.append({
                 "session": segment.get("session", ""),
@@ -154,10 +154,9 @@ def draw_chart(draw, box, chart):
     max_minute = max(hhmmss_to_minutes(point["time_raw"]) for point in all_points)
     minute_span = max(1, max_minute - min_minute)
     dividers = []
-    session_labels = []
     candle_width = max(6, int(plot_width / max(94, minute_span / 5)))
 
-    for segment in segments:
+    for segment_index, segment in enumerate(segments):
         seg_points = segment["points"]
         color = segment.get("color", "#5ad7ff")
         converted = []
@@ -199,34 +198,12 @@ def draw_chart(draw, box, chart):
                 )
             band_x0 = converted[0]["x"]
             band_x1 = converted[-1]["x"]
-            if session_labels:
+            if segment_index > 0:
                 divider_x = converted[0]["x"]
                 dividers.append(divider_x)
-            session_labels.append({
-                "color": color,
-                "x": (band_x0 + band_x1) / 2,
-                "label": segment["session"],
-            })
 
     for divider_x in dividers:
         draw.line((divider_x, plot_y0, divider_x, plot_y1), fill="#cbd7e3", width=1)
-
-    for item in session_labels:
-        text_w, text_h = measure(FONT_AXIS, item["label"])
-        px0 = item["x"] - (text_w + 16) / 2
-        py0 = plot_y0 + 8
-        px1 = px0 + text_w + 16
-        py1 = py0 + text_h + 8
-        if len(session_labels) == 1:
-            continue
-        if px0 < plot_x0:
-            px1 += plot_x0 - px0
-            px0 = plot_x0
-        if px1 > plot_x1:
-            px0 -= px1 - plot_x1
-            px1 = plot_x1
-        rounded(draw, (px0, py0, px1, py1), 10, fill="#ffffff", outline="#d9e4ee")
-        draw_text(draw, (px0 + 8, py0 + 4), item["label"], FONT_AXIS, item["color"])
 
     axis_marks = [
         ("08:00", "080000"),
