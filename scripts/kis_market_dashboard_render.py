@@ -304,7 +304,7 @@ def draw_card(draw, box, card):
     draw_text(draw, (pill_x0 + 13, pill_y0 + 6), market, FONT_TINY, "#6f8295")
 
     pct = str(card.get("pct", ""))
-    meta_color = "#059669" if pct.startswith("+") else "#dc2626" if pct.startswith("-") else "#64748b"
+    meta_color = "#ef4444" if pct.startswith("+") else "#3b82f6" if pct.startswith("-") else "#64748b"
     draw_text(draw, (x0 + 22, y0 + 126), f"어제보다 {card.get('diff', '-')} ({pct})", FONT_META, meta_color)
 
     draw_chart(draw, box, card.get("chart", {}))
@@ -329,7 +329,7 @@ def draw_summary_card(draw, box, card):
     draw_text(draw, (x0 + 12, y0 + 34), card.get("price", "-"), FONT_META, "#14202b")
     pct = str(card.get("pct", ""))
     status = card.get("status", "")
-    meta_color = "#059669" if pct.startswith("+") else "#dc2626" if pct.startswith("-") else "#64748b"
+    meta_color = "#ef4444" if pct.startswith("+") else "#3b82f6" if pct.startswith("-") else "#64748b"
     if status == "unavailable":
         meta_color = "#94a3b8"
     label = card.get("label", "")
