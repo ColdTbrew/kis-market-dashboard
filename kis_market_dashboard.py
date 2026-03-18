@@ -82,10 +82,14 @@ def cmd_generate(args):
     previous_png = os.environ.get("KIS_DASHBOARD_PNG")
     previous_market = os.environ.get("KIS_DASHBOARD_MARKET")
     previous_watchlist = os.environ.get("KIS_DASHBOARD_WATCHLIST")
+    previous_interval = os.environ.get("KIS_DASHBOARD_INTERVAL_MINUTES")
+    previous_candle_width = os.environ.get("KIS_DASHBOARD_CANDLE_WIDTH_SCALE")
     try:
         os.environ["KIS_DASHBOARD_JSON"] = str(json_out)
         os.environ["KIS_DASHBOARD_MARKET"] = market
         os.environ["KIS_DASHBOARD_WATCHLIST"] = str(watchlist_path)
+        os.environ["KIS_DASHBOARD_INTERVAL_MINUTES"] = str(args.interval_minutes)
+        os.environ["KIS_DASHBOARD_CANDLE_WIDTH_SCALE"] = str(args.candle_width_scale)
         if args.render:
             os.environ["KIS_DASHBOARD_PNG"] = str(png_out)
 
@@ -141,6 +145,16 @@ def cmd_generate(args):
             os.environ.pop("KIS_DASHBOARD_WATCHLIST", None)
         else:
             os.environ["KIS_DASHBOARD_WATCHLIST"] = previous_watchlist
+
+        if previous_interval is None:
+            os.environ.pop("KIS_DASHBOARD_INTERVAL_MINUTES", None)
+        else:
+            os.environ["KIS_DASHBOARD_INTERVAL_MINUTES"] = previous_interval
+
+        if previous_candle_width is None:
+            os.environ.pop("KIS_DASHBOARD_CANDLE_WIDTH_SCALE", None)
+        else:
+            os.environ["KIS_DASHBOARD_CANDLE_WIDTH_SCALE"] = previous_candle_width
 
 
 def cmd_watchlist_list(args):
@@ -215,6 +229,18 @@ def build_parser():
     generate.add_argument("--out-dir", help="Directory for generated files. Default: ./tmp")
     generate.add_argument("--json-out", help="Explicit JSON output path. Overrides --out-dir.")
     generate.add_argument("--png-out", help="Explicit PNG output path. Overrides --out-dir.")
+    generate.add_argument(
+        "--interval-minutes",
+        type=int,
+        default=10,
+        help="Candlestick interval in minutes. Default: 10",
+    )
+    generate.add_argument(
+        "--candle-width-scale",
+        type=float,
+        default=1.0,
+        help="Render-time candle width scale. Smaller values draw thinner candles. Default: 1.0",
+    )
     generate.add_argument(
         "--no-render",
         dest="render",

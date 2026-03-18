@@ -33,7 +33,7 @@ DEFAULT_WATCHLISTS = {
     ],
 }
 
-CHART_INTERVAL_MINUTES = 10
+DEFAULT_CHART_INTERVAL_MINUTES = 10
 
 SUMMARY_ITEMS_BY_MARKET = {
     "kr": [
@@ -97,6 +97,15 @@ def normalize_market(value):
 
 def current_market():
     return normalize_market(os.getenv("KIS_DASHBOARD_MARKET", "kr"))
+
+
+def chart_interval_minutes():
+    raw = os.getenv("KIS_DASHBOARD_INTERVAL_MINUTES", str(DEFAULT_CHART_INTERVAL_MINUTES))
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_CHART_INTERVAL_MINUTES
+    return max(1, value)
 
 
 def output_json_path():
@@ -548,7 +557,8 @@ def fetch_intraday_chart(token, code):
     }
 
 
-def fetch_us_intraday_chart(token, excd, symbol, interval_minutes=CHART_INTERVAL_MINUTES):
+def fetch_us_intraday_chart(token, excd, symbol, interval_minutes=None):
+    interval_minutes = interval_minutes or chart_interval_minutes()
     try:
         data = kis_get(
             token,
@@ -632,7 +642,8 @@ def aggregate_segment_points(points, minutes=5):
     return buckets
 
 
-def aggregate_chart(chart, minutes=CHART_INTERVAL_MINUTES):
+def aggregate_chart(chart, minutes=None):
+    minutes = minutes or chart_interval_minutes()
     aggregated_segments = []
     for segment in chart.get("segments", []):
         points = aggregate_segment_points(segment.get("points", []), minutes=minutes)
@@ -650,7 +661,7 @@ def aggregate_chart(chart, minutes=CHART_INTERVAL_MINUTES):
 
 def build_stock_card(token, name, code, market):
     quote = quote_card(token, code)
-    chart = aggregate_chart(fetch_intraday_chart(token, code), minutes=CHART_INTERVAL_MINUTES)
+    chart = aggregate_chart(fetch_intraday_chart(token, code), minutes=chart_interval_minutes())
     return {
         "name": name,
         "market": market,
@@ -663,7 +674,7 @@ def build_stock_card(token, name, code, market):
 
 def build_us_stock_card(token, name, code, market, excd):
     quote = us_quote_card(token, excd, code, digits=2)
-    chart = fetch_us_intraday_chart(token, excd, code, interval_minutes=CHART_INTERVAL_MINUTES)
+    chart = fetch_us_intraday_chart(token, excd, code, interval_minutes=chart_interval_minutes())
     return {
         "name": name,
         "market": market,
@@ -684,7 +695,7 @@ def build_index_card(token, name, code, market):
             "points": points,
         }] if points else [],
         "warnings": errors,
-        "interval_minutes": CHART_INTERVAL_MINUTES,
+        "interval_minutes": chart_interval_minutes(),
     }
     return {
         "name": name,

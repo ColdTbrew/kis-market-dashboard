@@ -60,6 +60,15 @@ def png_path():
     return Path(os.getenv("KIS_DASHBOARD_PNG", ROOT / "tmp" / "kis_market_dashboard.png"))
 
 
+def candle_width_scale():
+    raw = os.getenv("KIS_DASHBOARD_CANDLE_WIDTH_SCALE", "1.0")
+    try:
+        value = float(raw)
+    except ValueError:
+        return 1.0
+    return max(0.3, min(2.0, value))
+
+
 def market_palette(market):
     if str(market or "").lower() == "us":
         return {
@@ -229,9 +238,11 @@ def draw_chart(draw, box, chart, palette, market):
     max_minute = max(hhmmss_to_minutes(point["time_raw"]) for point in all_points)
     minute_span = max(1, max_minute - min_minute)
     dividers = []
-    candle_width = max(4, int(plot_width / max(96, minute_span / 5)))
+    base_candle_width = max(4, int(plot_width / max(96, minute_span / 5)))
+    candle_width = max(2, int(base_candle_width * candle_width_scale()))
     highest = None
     lowest = None
+    converted_segments = []
 
     for segment_index, segment in enumerate(segments):
         seg_points = segment["points"]
@@ -259,55 +270,65 @@ def draw_chart(draw, box, chart, palette, market):
             previous_close = point["close"]
 
         if converted:
+            converted_segments.append(converted)
             for candle in converted:
-                if candle["direction"] == "up":
-                    body_fill = palette["candle_up"]
-                    body_outline = palette["candle_up"]
-                elif candle["direction"] == "down":
-                    body_fill = palette["candle_down"]
-                    body_outline = palette["candle_down"]
-                else:
-                    body_fill = palette["candle_flat"]
-                    body_outline = palette["candle_flat"]
-                wick_color = "#c7d0da"
-                draw.line((candle["x"], candle["high"], candle["x"], candle["low"]), fill=wick_color, width=1)
-                top = min(candle["open"], candle["close"])
-                bottom = max(candle["open"], candle["close"])
-                if bottom - top < 2:
-                    bottom = top + 2
-                draw.rectangle(
-                    (
-                        candle["x"] - candle_width / 2,
-                        top,
-                        candle["x"] + candle_width / 2,
-                        bottom,
-                    ),
-                    fill=body_fill,
-                    outline=body_outline,
-                    width=1,
-                )
-                vol_h = 0 if max_volume == 0 else (candle["volume"] / max_volume) * volume_height
-                draw.rectangle(
-                    (
-                        candle["x"] - max(1, candle_width / 2),
-                        volume_y1 - vol_h,
-                        candle["x"] + max(1, candle_width / 2),
-                        volume_y1,
-                    ),
-                    fill="#d6dde7",
-                    outline=None,
-                )
                 if highest is None or candle["raw_high"] > highest["value"]:
                     highest = {"value": candle["raw_high"], "x": candle["x"], "y": candle["high"]}
                 if lowest is None or candle["raw_low"] < lowest["value"]:
                     lowest = {"value": candle["raw_low"], "x": candle["x"], "y": candle["low"]}
-            band_x0 = converted[0]["x"]
             if segment_index > 0:
                 divider_x = converted[0]["x"]
                 dividers.append(divider_x)
 
+    axis_marks = build_axis_marks(all_points)
+    for label, minute in axis_marks:
+        x = plot_x0 + (plot_width * (minute - min_minute) / minute_span)
+        draw.line((x, plot_y0, x, plot_y1), fill="#f5f7fa", width=1)
+        text_w, _ = measure(FONT_AXIS, label)
+        draw_text(draw, (x - text_w / 2, plot_y1 + 12), label, FONT_AXIS, "#7c8ea0")
+
     for divider_x in dividers:
         draw.line((divider_x, plot_y0, divider_x, plot_y1), fill="#eef2f6", width=1)
+
+    for converted in converted_segments:
+        for candle in converted:
+            if candle["direction"] == "up":
+                body_fill = palette["candle_up"]
+                body_outline = palette["candle_up"]
+            elif candle["direction"] == "down":
+                body_fill = palette["candle_down"]
+                body_outline = palette["candle_down"]
+            else:
+                body_fill = palette["candle_flat"]
+                body_outline = palette["candle_flat"]
+            wick_color = "#c7d0da"
+            draw.line((candle["x"], candle["high"], candle["x"], candle["low"]), fill=wick_color, width=1)
+            top = min(candle["open"], candle["close"])
+            bottom = max(candle["open"], candle["close"])
+            if bottom - top < 2:
+                bottom = top + 2
+            draw.rectangle(
+                (
+                    candle["x"] - candle_width / 2,
+                    top,
+                    candle["x"] + candle_width / 2,
+                    bottom,
+                ),
+                fill=body_fill,
+                outline=body_outline,
+                width=1,
+            )
+            vol_h = 0 if max_volume == 0 else (candle["volume"] / max_volume) * volume_height
+            draw.rectangle(
+                (
+                    candle["x"] - max(1, candle_width / 2),
+                    volume_y1 - vol_h,
+                    candle["x"] + max(1, candle_width / 2),
+                    volume_y1,
+                ),
+                fill="#d6dde7",
+                outline=None,
+            )
 
     if highest is not None:
         label = f"최고 {format_axis_value(highest['value'])}"
@@ -322,13 +343,6 @@ def draw_chart(draw, box, chart, palette, market):
         lx = max(plot_x0, lowest["x"] - 6)
         ly = min(plot_y1 - lh, lowest["y"] + 8)
         draw_text(draw, (lx, ly), label, FONT_SMALL, "#98a4b3")
-
-    axis_marks = build_axis_marks(all_points)
-    for label, minute in axis_marks:
-        x = plot_x0 + (plot_width * (minute - min_minute) / minute_span)
-        draw.line((x, plot_y0, x, plot_y1), fill="#f5f7fa", width=1)
-        text_w, _ = measure(FONT_AXIS, label)
-        draw_text(draw, (x - text_w / 2, plot_y1 + 12), label, FONT_AXIS, "#7c8ea0")
 
     warnings = chart.get("warnings", [])
     if warnings:
