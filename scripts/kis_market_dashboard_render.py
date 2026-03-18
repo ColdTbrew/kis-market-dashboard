@@ -9,11 +9,10 @@ ROOT = Path(__file__).resolve().parent.parent
 JSON_PATH = Path(os.getenv("KIS_DASHBOARD_JSON", ROOT / "tmp" / "kis_market_dashboard.json"))
 PNG_PATH = Path(os.getenv("KIS_DASHBOARD_PNG", ROOT / "tmp" / "kis_market_dashboard.png"))
 
-WIDTH = 1320
+WIDTH = 1440
 PADDING = 28
 GAP = 22
-CARD_HEIGHT = 480
-CARD_HEIGHT_WIDE = 520
+CARD_HEIGHT = 520
 HEADER_HEIGHT = 86
 BOTTOM_PADDING = 28
 COLS = 2
@@ -69,16 +68,15 @@ def draw_line(draw, points, fill, width):
 
 def card_layout(cards):
     layouts = []
-    card_width = (WIDTH - (PADDING * 2) - GAP) // COLS
     y = PADDING + HEADER_HEIGHT
 
-    if len(cards) == 3:
-        layouts.append((PADDING, y, PADDING + card_width, y + CARD_HEIGHT))
-        layouts.append((PADDING + card_width + GAP, y, WIDTH - PADDING, y + CARD_HEIGHT))
-        y += CARD_HEIGHT + GAP
-        layouts.append((PADDING, y, WIDTH - PADDING, y + CARD_HEIGHT_WIDE))
+    if len(cards) <= 3:
+        for _ in cards:
+            layouts.append((PADDING, y, WIDTH - PADDING, y + CARD_HEIGHT))
+            y += CARD_HEIGHT + GAP
         return layouts
 
+    card_width = (WIDTH - (PADDING * 2) - GAP) // COLS
     for index in range(len(cards)):
         row = index // COLS
         col = index % COLS
@@ -90,7 +88,7 @@ def card_layout(cards):
 
 def chart_bounds(box):
     x0, y0, x1, y1 = box
-    chart_bottom = y1 - 66
+    chart_bottom = y1 - 68
     return x0 + 16, y0 + 152, x1 - 16, chart_bottom
 
 
@@ -146,7 +144,7 @@ def draw_chart(draw, box, chart):
     minute_span = max(1, max_minute - min_minute)
     dividers = []
     session_labels = []
-    candle_width = max(5, int(plot_width / max(84, minute_span / 5)))
+    candle_width = max(6, int(plot_width / max(94, minute_span / 5)))
 
     for segment in segments:
         seg_points = segment["points"]
@@ -241,6 +239,14 @@ def draw_card(draw, box, card):
 
     draw_text(draw, (x0 + 20, y0 + 22), card.get("name", "-"), FONT_NAME, "#14202b")
     draw_text(draw, (x0 + 20, y0 + 72), card.get("price", "-"), FONT_PRICE, "#14202b")
+    market = card.get("market", "-")
+    market_w, market_h = measure(FONT_TINY, market)
+    pill_x1 = x1 - 22
+    pill_x0 = pill_x1 - market_w - 20
+    pill_y0 = y0 + 24
+    pill_y1 = pill_y0 + market_h + 10
+    rounded(draw, (pill_x0, pill_y0, pill_x1, pill_y1), 12, fill="#f5f9fd", outline="#dbe6f0")
+    draw_text(draw, (pill_x0 + 10, pill_y0 + 4), market, FONT_TINY, "#6f8295")
 
     pct = str(card.get("pct", ""))
     meta_color = "#059669" if pct.startswith("+") else "#dc2626" if pct.startswith("-") else "#64748b"
@@ -249,7 +255,7 @@ def draw_card(draw, box, card):
     draw_chart(draw, box, card.get("chart", {}))
 
     footer_y = y1 - 36
-    draw_text(draw, (x0 + 20, footer_y), card.get("market", "-"), FONT_SMALL, "#7b8a9b")
+    draw_text(draw, (x0 + 20, footer_y), "KIS Open API", FONT_SMALL, "#7b8a9b")
     interval = card.get("chart", {}).get("interval_minutes")
     tag = f"KIS {interval}m candles" if interval else "KIS intraday"
     tag_width, _ = measure(FONT_SMALL, tag)
@@ -280,6 +286,11 @@ def main():
 
     draw_text(draw, (PADDING, PADDING), data.get("title", "KR Market Dashboard"), FONT_H1, "#10202f")
     draw_text(draw, (PADDING, PADDING + 50), data.get("subtitle", "KIS intraday"), FONT_SUB, "#6f8295")
+    generated_at = data.get("generated_at", "")
+    if generated_at:
+        stamp = generated_at.replace("T", " ")
+        stamp_w, _ = measure(FONT_TINY, stamp)
+        draw_text(draw, (WIDTH - PADDING - stamp_w, PADDING + 10), stamp, FONT_TINY, "#93a4b5")
 
     for idx, card in enumerate(cards):
         draw_card(draw, layouts[idx], card)
