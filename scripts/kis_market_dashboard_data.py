@@ -12,6 +12,8 @@ SECRETS_PATH = Path(os.path.expanduser("~/.openclaw/secrets.json"))
 APPKEY = os.getenv("KIS_APPKEY", "")
 APPSECRET = os.getenv("KIS_APPSECRET", "")
 BASE_URL = os.getenv("KIS_BASE_URL", "") or "https://openapi.koreainvestment.com:9443"
+CANO = os.getenv("KIS_CANO", "")
+ACNT_PRDT_CD = os.getenv("KIS_ACNT_PRDT_CD", "")
 OUT = Path(os.getenv("KIS_DASHBOARD_JSON", "./tmp/kis_market_dashboard.json"))
 TOKEN_CACHE = OUT.parent / ".kis_access_token.json"
 OUT.parent.mkdir(parents=True, exist_ok=True)
@@ -37,6 +39,8 @@ if SECRETS_PATH.exists() and (not APPKEY or not APPSECRET):
         APPKEY = APPKEY or kis.get("appkey", "")
         APPSECRET = APPSECRET or kis.get("appsecret", "")
         BASE_URL = os.getenv("KIS_BASE_URL", "") or kis.get("baseUrl", "") or BASE_URL
+        CANO = CANO or str(kis.get("cano", ""))
+        ACNT_PRDT_CD = ACNT_PRDT_CD or str(kis.get("acnt_prdt_cd", ""))
     except Exception:
         pass
 
@@ -593,6 +597,53 @@ def fx_quote_card_from_price_detail(token, excd, symb, digits=2):
     }
 
 
+def paymt_stdr_fx_rate(token, base_date):
+    data = kis_get(
+        token,
+        "/uapi/overseas-stock/v1/trading/inquire-paymt-stdr-balance",
+        {
+            "CANO": CANO,
+            "ACNT_PRDT_CD": ACNT_PRDT_CD,
+            "BASS_DT": base_date.strftime("%Y%m%d"),
+            "WCRC_FRCR_DVSN_CD": "01",
+            "INQR_DVSN_CD": "00",
+        },
+        "CTRP6010R",
+    )
+    output1 = data.get("output1") or []
+    output2 = data.get("output2") or []
+    summary = output1[0] if isinstance(output1, list) and output1 else {}
+    details = output2[0] if isinstance(output2, list) and output2 else {}
+    return parse_number(summary.get("bass_exrt")) or parse_number(details.get("frst_bltn_exrt"))
+
+
+def fx_quote_card_from_account(token, digits=2):
+    if not CANO or not ACNT_PRDT_CD:
+        return None
+
+    today = datetime.now().date()
+    current = paymt_stdr_fx_rate(token, today)
+    if current is None:
+        return None
+
+    previous = None
+    for days_back in range(1, 8):
+        candidate = paymt_stdr_fx_rate(token, today - timedelta(days=days_back))
+        if candidate is not None:
+            previous = candidate
+            break
+
+    diff = None if previous is None else current - previous
+    sign_code = "2" if diff and diff > 0 else "5" if diff and diff < 0 else "3"
+    pct = None if previous in (None, 0) else (diff / previous) * 100.0
+    return {
+        "price": format_decimal(current, digits=digits),
+        "diff": "-" if diff is None else format_pct_or_diff_decimal(diff, sign_code, digits=digits),
+        "pct": "-" if pct is None else format_pct(pct, sign_code),
+        "raw_price": current,
+    }
+
+
 def unavailable_summary_card(item, detail):
     return {
         "name": item["name"],
@@ -631,12 +682,14 @@ def build_summary_card(token, item):
         }
 
     if item["type"] == "fx":
-        quote = fx_quote_card_from_price_detail(
-            token,
-            item.get("anchor_excd", "NAS"),
-            item.get("anchor_symb", "AAPL"),
-            digits=item.get("price_digits", 2),
-        )
+        quote = fx_quote_card_from_account(token, digits=item.get("price_digits", 2))
+        if quote is None:
+            quote = fx_quote_card_from_price_detail(
+                token,
+                item.get("anchor_excd", "NAS"),
+                item.get("anchor_symb", "AAPL"),
+                digits=item.get("price_digits", 2),
+            )
         if quote["raw_price"] == 0:
             return unavailable_summary_card(item, "KIS 환율 없음")
         return {
