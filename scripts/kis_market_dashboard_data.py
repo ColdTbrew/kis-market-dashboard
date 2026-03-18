@@ -17,9 +17,10 @@ TOKEN_CACHE = OUT.parent / ".kis_access_token.json"
 OUT.parent.mkdir(parents=True, exist_ok=True)
 
 WATCHLIST = [
-    ("Samsung Elec.", "005930"),
-    ("SK Hynix", "000660"),
-    ("SK Telecom", "017670"),
+    {"type": "index", "name": "KOSPI", "code": "0001", "market": "KOSPI"},
+    {"type": "stock", "name": "Samsung Elec.", "code": "005930", "market": "005930"},
+    {"type": "stock", "name": "SK Hynix", "code": "000660", "market": "000660"},
+    {"type": "stock", "name": "SK Telecom", "code": "017670", "market": "017670"},
 ]
 
 if SECRETS_PATH.exists() and (not APPKEY or not APPSECRET):
@@ -132,9 +133,24 @@ def parse_int(value):
         return None
 
 
+def parse_number(value):
+    text = str(value or "").strip().replace(",", "")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
 def format_number(value):
     number = parse_int(value)
     return "-" if number is None else f"{number:,}"
+
+
+def format_decimal(value, digits=2):
+    number = parse_number(value)
+    return "-" if number is None else f"{number:,.{digits}f}"
 
 
 def format_diff(value, sign_code=None):
@@ -191,13 +207,45 @@ def quote_card(token, code):
     }
 
 
+def index_quote_card(token, code):
+    data = kis_get(
+        token,
+        "/uapi/domestic-stock/v1/quotations/inquire-index-price",
+        {
+            "FID_COND_MRKT_DIV_CODE": "U",
+            "FID_INPUT_ISCD": code,
+        },
+        "FHPUP02100000",
+    )
+    out = data.get("output", {})
+    sign_code = out.get("prdy_vrss_sign")
+    return {
+        "price": format_decimal(out.get("bstp_nmix_prpr")),
+        "diff": format_pct_or_diff_decimal(out.get("bstp_nmix_prdy_vrss"), sign_code),
+        "pct": format_pct(out.get("bstp_nmix_prdy_ctrt"), sign_code),
+        "raw_price": parse_number(out.get("bstp_nmix_prpr")) or 0.0,
+    }
+
+
+def format_pct_or_diff_decimal(value, sign_code=None, digits=2):
+    number = parse_number(value)
+    if number is None:
+        return "-"
+    negative = sign_code in {"4", "5"}
+    neutral = sign_code == "3" or number == 0
+    body = f"{abs(number):,.{digits}f}"
+    if neutral:
+        return body
+    return f"-{body}" if negative else f"+{body}"
+
+
 def normalize_chart_row(row, session):
     price = parse_int(row.get("stck_prpr"))
     open_price = parse_int(row.get("stck_oprc"))
     high_price = parse_int(row.get("stck_hgpr"))
     low_price = parse_int(row.get("stck_lwpr"))
     time_raw = str(row.get("stck_cntg_hour") or "").strip()
-    if None in (price, open_price, high_price, low_price) or len(time_raw) != 6:
+    if None in (price, open_price, high_price, low_price) or not is_valid_time_raw(time_raw):
         return None
     return {
         "time": f"{time_raw[:2]}:{time_raw[2:4]}",
@@ -210,6 +258,36 @@ def normalize_chart_row(row, session):
         "volume": parse_int(row.get("cntg_vol")) or 0,
         "session": session,
     }
+
+
+def normalize_index_chart_row(row, session):
+    price = parse_number(row.get("bstp_nmix_prpr"))
+    open_price = parse_number(row.get("bstp_nmix_oprc"))
+    high_price = parse_number(row.get("bstp_nmix_hgpr"))
+    low_price = parse_number(row.get("bstp_nmix_lwpr"))
+    time_raw = str(row.get("stck_cntg_hour") or "").strip()
+    if None in (price, open_price, high_price, low_price) or not is_valid_time_raw(time_raw):
+        return None
+    return {
+        "time": f"{time_raw[:2]}:{time_raw[2:4]}",
+        "time_raw": time_raw,
+        "price": price,
+        "open": open_price,
+        "high": high_price,
+        "low": low_price,
+        "close": price,
+        "volume": parse_int(row.get("cntg_vol")) or 0,
+        "session": session,
+    }
+
+
+def is_valid_time_raw(value):
+    if len(value) != 6 or not value.isdigit():
+        return False
+    hour = int(value[:2])
+    minute = int(value[2:4])
+    second = int(value[4:6])
+    return 0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59
 
 
 def fetch_session_series(token, code, market_code, session_name, date_str):
@@ -263,6 +341,33 @@ def fetch_session_series(token, code, market_code, session_name, date_str):
 
     collected.sort(key=lambda item: item["time_raw"])
     return collected, errors
+
+
+def fetch_index_series(token, code, interval_seconds="300"):
+    try:
+        data = kis_get(
+            token,
+            "/uapi/domestic-stock/v1/quotations/inquire-time-indexchartprice",
+            {
+                "FID_COND_MRKT_DIV_CODE": "U",
+                "FID_ETC_CLS_CODE": "0",
+                "FID_INPUT_ISCD": code,
+                "FID_INPUT_HOUR_1": interval_seconds,
+                "FID_PW_DATA_INCU_YN": "N",
+            },
+            "FHKUP03500200",
+        )
+    except RuntimeError as exc:
+        return [], [str(exc)]
+
+    rows = data.get("output2") or []
+    collected = []
+    for row in rows:
+        normalized = normalize_index_chart_row(row, "KRX")
+        if normalized:
+            collected.append(normalized)
+    collected.sort(key=lambda item: item["time_raw"])
+    return collected, []
 
 
 def fetch_intraday_chart(token, code):
@@ -374,12 +479,12 @@ def aggregate_chart(chart, minutes=5):
     }
 
 
-def build_card(token, name, code):
+def build_stock_card(token, name, code, market):
     quote = quote_card(token, code)
     chart = aggregate_chart(fetch_intraday_chart(token, code), minutes=5)
     return {
         "name": name,
-        "market": code,
+        "market": market,
         "price": quote["price"],
         "diff": quote["diff"],
         "pct": quote["pct"],
@@ -387,13 +492,41 @@ def build_card(token, name, code):
     }
 
 
+def build_index_card(token, name, code, market):
+    quote = index_quote_card(token, code)
+    points, errors = fetch_index_series(token, code, interval_seconds="300")
+    chart = {
+        "segments": [{
+            "session": "KRX",
+            "color": "#f97316",
+            "points": points,
+        }] if points else [],
+        "warnings": errors,
+        "interval_minutes": 5,
+    }
+    return {
+        "name": name,
+        "market": market,
+        "price": quote["price"],
+        "diff": quote["diff"],
+        "pct": quote["pct"],
+        "chart": chart,
+    }
+
+
+def build_card(token, item):
+    if item["type"] == "index":
+        return build_index_card(token, item["name"], item["code"], item["market"])
+    return build_stock_card(token, item["name"], item["code"], item["market"])
+
+
 def main():
     token = get_token()
     result = {
         "title": "KR Market Dashboard",
-        "subtitle": "KIS intraday · NXT session to KRX session",
+        "subtitle": "KIS intraday · KOSPI + NXT to KRX session flow",
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "cards": [build_card(token, name, code) for name, code in WATCHLIST],
+        "cards": [build_card(token, item) for item in WATCHLIST],
     }
     OUT.write_text(json.dumps(result, ensure_ascii=False, indent=2))
     print(str(OUT))

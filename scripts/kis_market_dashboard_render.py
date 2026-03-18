@@ -12,7 +12,7 @@ PNG_PATH = Path(os.getenv("KIS_DASHBOARD_PNG", ROOT / "tmp" / "kis_market_dashbo
 WIDTH = 1440
 PADDING = 28
 GAP = 22
-CARD_HEIGHT = 520
+CARD_HEIGHT = 540
 HEADER_HEIGHT = 86
 BOTTOM_PADDING = 28
 COLS = 2
@@ -38,14 +38,14 @@ def load_font(size, bold=False):
     return ImageFont.load_default()
 
 
-FONT_H1 = load_font(36, bold=True)
-FONT_SUB = load_font(17)
-FONT_NAME = load_font(28, bold=True)
-FONT_PRICE = load_font(42, bold=True)
-FONT_META = load_font(21, bold=True)
+FONT_H1 = load_font(40, bold=True)
+FONT_SUB = load_font(18)
+FONT_NAME = load_font(31, bold=True)
+FONT_PRICE = load_font(46, bold=True)
+FONT_META = load_font(22, bold=True)
 FONT_SMALL = load_font(16)
-FONT_TINY = load_font(14)
-FONT_AXIS = load_font(13)
+FONT_TINY = load_font(13)
+FONT_AXIS = load_font(12)
 
 
 def draw_text(draw, xy, text, font, fill):
@@ -88,8 +88,8 @@ def card_layout(cards):
 
 def chart_bounds(box):
     x0, y0, x1, y1 = box
-    chart_bottom = y1 - 68
-    return x0 + 16, y0 + 152, x1 - 16, chart_bottom
+    chart_bottom = y1 - 72
+    return x0 + 16, y0 + 160, x1 - 16, chart_bottom
 
 
 def flatten_segments(segments):
@@ -101,13 +101,20 @@ def flatten_segments(segments):
                 "color": segment.get("color", "#5ad7ff"),
                 "time": point.get("time", ""),
                 "time_raw": point.get("time_raw", ""),
-                "price": int(point.get("price", 0)),
-                "open": int(point.get("open", point.get("price", 0))),
-                "high": int(point.get("high", point.get("price", 0))),
-                "low": int(point.get("low", point.get("price", 0))),
-                "close": int(point.get("close", point.get("price", 0))),
+                "price": float(point.get("price", 0)),
+                "open": float(point.get("open", point.get("price", 0))),
+                "high": float(point.get("high", point.get("price", 0))),
+                "low": float(point.get("low", point.get("price", 0))),
+                "close": float(point.get("close", point.get("price", 0))),
             })
     return merged
+
+
+def format_axis_value(value):
+    rounded = round(value)
+    if abs(value - rounded) < 1e-6:
+        return f"{int(rounded):,}"
+    return f"{value:,.2f}"
 
 
 def hhmmss_to_minutes(value):
@@ -139,7 +146,7 @@ def draw_chart(draw, box, chart):
         y = plot_y0 + ratio * plot_height
         draw.line((plot_x0, y, plot_x1, y), fill="#e5edf5", width=1)
         price_value = max_price - (price_span * ratio)
-        label = f"{int(round(price_value)):,}"
+        label = format_axis_value(price_value)
         label_w, label_h = measure(FONT_AXIS, label)
         draw_text(draw, (plot_x1 - label_w, max(plot_y0, y - label_h - 2)), label, FONT_AXIS, "#9aabbb")
 
@@ -210,6 +217,8 @@ def draw_chart(draw, box, chart):
         py0 = plot_y0 + 8
         px1 = px0 + text_w + 16
         py1 = py0 + text_h + 8
+        if len(session_labels) == 1:
+            continue
         if px0 < plot_x0:
             px1 += plot_x0 - px0
             px0 = plot_x0
@@ -260,7 +269,7 @@ def draw_card(draw, box, card):
 
     pct = str(card.get("pct", ""))
     meta_color = "#059669" if pct.startswith("+") else "#dc2626" if pct.startswith("-") else "#64748b"
-    draw_text(draw, (x0 + 20, y0 + 128), f"Δ {card.get('diff', '-')} · {pct}", FONT_META, meta_color)
+    draw_text(draw, (x0 + 20, y0 + 130), f"Δ {card.get('diff', '-')} · {pct}", FONT_META, meta_color)
 
     draw_chart(draw, box, card.get("chart", {}))
 
