@@ -60,6 +60,26 @@ def png_path():
     return Path(os.getenv("KIS_DASHBOARD_PNG", ROOT / "tmp" / "kis_market_dashboard.png"))
 
 
+def market_palette(market):
+    if str(market or "").lower() == "us":
+        return {
+            "up": "#16a34a",
+            "down": "#ef4444",
+            "flat": "#64748b",
+            "candle_up": "#22c55e",
+            "candle_down": "#ef4444",
+            "candle_flat": "#b8c2cf",
+        }
+    return {
+        "up": "#ef4444",
+        "down": "#3b82f6",
+        "flat": "#64748b",
+        "candle_up": "#f43f5e",
+        "candle_down": "#3b82f6",
+        "candle_flat": "#b8c2cf",
+    }
+
+
 def draw_text(draw, xy, text, font, fill):
     draw.text(xy, text, font=font, fill=fill)
 
@@ -160,7 +180,7 @@ def build_axis_marks(all_points):
     return [(minutes_to_label(minutes[index]), minutes[index]) for index in indices]
 
 
-def draw_chart(draw, box, chart):
+def draw_chart(draw, box, chart, palette):
     cx0, cy0, cx1, cy1 = chart_bounds(box)
     rounded(draw, (cx0, cy0, cx1, cy1), 20, fill="#ffffff", outline="#e5ebf2")
     inner = (cx0 + 12, cy0 + 12, cx1 - 12, cy1 - 12)
@@ -223,14 +243,14 @@ def draw_chart(draw, box, chart):
         if converted:
             for candle in converted:
                 if candle["close"] > candle["open"]:
-                    body_fill = "#f43f5e"
-                    body_outline = "#f43f5e"
+                    body_fill = palette["candle_up"]
+                    body_outline = palette["candle_up"]
                 elif candle["close"] < candle["open"]:
-                    body_fill = "#3b82f6"
-                    body_outline = "#3b82f6"
+                    body_fill = palette["candle_down"]
+                    body_outline = palette["candle_down"]
                 else:
-                    body_fill = "#b8c2cf"
-                    body_outline = "#b8c2cf"
+                    body_fill = palette["candle_flat"]
+                    body_outline = palette["candle_flat"]
                 wick_color = "#c7d0da"
                 draw.line((candle["x"], candle["high"], candle["x"], candle["low"]), fill=wick_color, width=1)
                 top = min(candle["open"], candle["close"])
@@ -300,7 +320,7 @@ def draw_chart(draw, box, chart):
             warning_y += 20
 
 
-def draw_card(draw, box, card):
+def draw_card(draw, box, card, palette):
     x0, y0, x1, y1 = box
     rounded(draw, box, 28, fill="#ffffff", outline="#dbe6f0")
 
@@ -316,10 +336,10 @@ def draw_card(draw, box, card):
     draw_text(draw, (pill_x0 + 13, pill_y0 + 6), market, FONT_TINY, "#6f8295")
 
     pct = str(card.get("pct", ""))
-    meta_color = "#ef4444" if pct.startswith("+") else "#3b82f6" if pct.startswith("-") else "#64748b"
+    meta_color = palette["up"] if pct.startswith("+") else palette["down"] if pct.startswith("-") else palette["flat"]
     draw_text(draw, (x0 + 22, y0 + 126), f"어제보다 {card.get('diff', '-')} ({pct})", FONT_META, meta_color)
 
-    draw_chart(draw, box, card.get("chart", {}))
+    draw_chart(draw, box, card.get("chart", {}), palette)
 
     footer_y = y1 - 36
     draw_text(draw, (x0 + 22, footer_y), "KIS Open API", FONT_SMALL, "#7b8a9b")
@@ -329,7 +349,7 @@ def draw_card(draw, box, card):
     draw_text(draw, (x1 - 22 - tag_width, footer_y), tag, FONT_SMALL, "#7b8a9b")
 
 
-def draw_summary_card(draw, box, card):
+def draw_summary_card(draw, box, card, palette):
     x0, y0, x1, y1 = box
     rounded(draw, box, 22, fill="#ffffff", outline="#dbe6f0")
     draw_text(draw, (x0 + 12, y0 + 10), card.get("name", "-"), FONT_AXIS, "#66788a")
@@ -341,7 +361,7 @@ def draw_summary_card(draw, box, card):
     draw_text(draw, (x0 + 12, y0 + 34), card.get("price", "-"), FONT_META, "#14202b")
     pct = str(card.get("pct", ""))
     status = card.get("status", "")
-    meta_color = "#ef4444" if pct.startswith("+") else "#3b82f6" if pct.startswith("-") else "#64748b"
+    meta_color = palette["up"] if pct.startswith("+") else palette["down"] if pct.startswith("-") else palette["flat"]
     if status == "unavailable":
         meta_color = "#94a3b8"
     label = card.get("label", "")
@@ -355,6 +375,7 @@ def draw_summary_card(draw, box, card):
 
 def main():
     data = json.loads(json_path().read_text())
+    palette = market_palette(data.get("market", "kr"))
     summary_cards = data.get("summary_cards", [])
     stock_cards = data.get("stock_cards", [])
     summary_y = PADDING + HEADER_HEIGHT
@@ -390,10 +411,10 @@ def main():
         draw_text(draw, (WIDTH - PADDING - stamp_w, PADDING + 18), stamp, FONT_TINY, "#93a4b5")
 
     for idx, card in enumerate(summary_cards):
-        draw_summary_card(draw, summary_layouts[idx], card)
+        draw_summary_card(draw, summary_layouts[idx], card, palette)
 
     for idx, card in enumerate(stock_cards):
-        draw_card(draw, layouts[idx], card)
+        draw_card(draw, layouts[idx], card, palette)
 
     output = png_path()
     output.parent.mkdir(parents=True, exist_ok=True)
