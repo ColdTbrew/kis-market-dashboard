@@ -373,7 +373,6 @@ def draw_card(draw, box, card, palette):
     draw_text(draw, (x1 - 22 - right_w, stats_y), right_text, FONT_SMALL, "#98a4b3")
 
     footer_y = y1 - 36
-    draw_text(draw, (x0 + 22, footer_y), "KIS Open API", FONT_SMALL, "#7b8a9b")
     interval = card.get("chart", {}).get("interval_minutes")
     tag = f"KIS {interval}m candles" if interval else "KIS intraday"
     tag_width, _ = measure(FONT_SMALL, tag)
