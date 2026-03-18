@@ -33,6 +33,8 @@ DEFAULT_WATCHLISTS = {
     ],
 }
 
+CHART_INTERVAL_MINUTES = 10
+
 SUMMARY_ITEMS_BY_MARKET = {
     "kr": [
         {"type": "kr_index", "name": "KOSPI", "code": "0001", "market": "KOSPI"},
@@ -546,7 +548,7 @@ def fetch_intraday_chart(token, code):
     }
 
 
-def fetch_us_intraday_chart(token, excd, symbol, interval_minutes=5):
+def fetch_us_intraday_chart(token, excd, symbol, interval_minutes=CHART_INTERVAL_MINUTES):
     try:
         data = kis_get(
             token,
@@ -630,7 +632,7 @@ def aggregate_segment_points(points, minutes=5):
     return buckets
 
 
-def aggregate_chart(chart, minutes=5):
+def aggregate_chart(chart, minutes=CHART_INTERVAL_MINUTES):
     aggregated_segments = []
     for segment in chart.get("segments", []):
         points = aggregate_segment_points(segment.get("points", []), minutes=minutes)
@@ -648,7 +650,7 @@ def aggregate_chart(chart, minutes=5):
 
 def build_stock_card(token, name, code, market):
     quote = quote_card(token, code)
-    chart = aggregate_chart(fetch_intraday_chart(token, code), minutes=5)
+    chart = aggregate_chart(fetch_intraday_chart(token, code), minutes=CHART_INTERVAL_MINUTES)
     return {
         "name": name,
         "market": market,
@@ -661,7 +663,7 @@ def build_stock_card(token, name, code, market):
 
 def build_us_stock_card(token, name, code, market, excd):
     quote = us_quote_card(token, excd, code, digits=2)
-    chart = fetch_us_intraday_chart(token, excd, code, interval_minutes=5)
+    chart = fetch_us_intraday_chart(token, excd, code, interval_minutes=CHART_INTERVAL_MINUTES)
     return {
         "name": name,
         "market": market,
@@ -682,7 +684,7 @@ def build_index_card(token, name, code, market):
             "points": points,
         }] if points else [],
         "warnings": errors,
-        "interval_minutes": 5,
+        "interval_minutes": CHART_INTERVAL_MINUTES,
     }
     return {
         "name": name,
