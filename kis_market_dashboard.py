@@ -58,6 +58,10 @@ def default_png_path(out_dir, market):
     return out_dir / f"kis_market_dashboard.{normalize_market(market)}.png"
 
 
+def default_image_path(out_dir, market, image_format):
+    return out_dir / f"kis_market_dashboard.{normalize_market(market)}.{image_format}"
+
+
 def market_message_title(market):
     return "KR 마켓 대시보드" if normalize_market(market) == "kr" else "US 마켓 대시보드"
 
@@ -74,12 +78,16 @@ def cmd_generate(args):
     market = normalize_market(args.market)
     out_dir = Path(args.out_dir) if args.out_dir else DEFAULT_OUT_DIR
     json_out = Path(args.json_out) if args.json_out else default_json_path(out_dir, market)
-    png_out = Path(args.png_out) if args.png_out else default_png_path(out_dir, market)
+    if args.png_out:
+        image_out = Path(args.png_out)
+    else:
+        image_out = default_image_path(out_dir, market, args.format)
     watchlist_path = watchlist_path_for_market(market)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     previous_json = os.environ.get("KIS_DASHBOARD_JSON")
     previous_png = os.environ.get("KIS_DASHBOARD_PNG")
+    previous_image_path = os.environ.get("KIS_DASHBOARD_IMAGE_PATH")
     previous_market = os.environ.get("KIS_DASHBOARD_MARKET")
     previous_watchlist = os.environ.get("KIS_DASHBOARD_WATCHLIST")
     previous_interval = os.environ.get("KIS_DASHBOARD_INTERVAL_MINUTES")
@@ -87,6 +95,8 @@ def cmd_generate(args):
     previous_width = os.environ.get("KIS_DASHBOARD_WIDTH_PX")
     previous_height = os.environ.get("KIS_DASHBOARD_HEIGHT_PX")
     previous_render_scale = os.environ.get("KIS_DASHBOARD_RENDER_SCALE")
+    previous_image_format = os.environ.get("KIS_DASHBOARD_IMAGE_FORMAT")
+    previous_webp_quality = os.environ.get("KIS_DASHBOARD_WEBP_QUALITY")
     try:
         os.environ["KIS_DASHBOARD_JSON"] = str(json_out)
         os.environ["KIS_DASHBOARD_MARKET"] = market
@@ -95,10 +105,13 @@ def cmd_generate(args):
         os.environ["KIS_DASHBOARD_CANDLE_WIDTH_SCALE"] = str(args.candle_width_scale)
         os.environ["KIS_DASHBOARD_WIDTH_PX"] = str(args.width_px)
         os.environ["KIS_DASHBOARD_RENDER_SCALE"] = str(args.render_scale)
+        os.environ["KIS_DASHBOARD_IMAGE_FORMAT"] = args.format
+        os.environ["KIS_DASHBOARD_WEBP_QUALITY"] = str(args.webp_quality)
         if args.height_px:
             os.environ["KIS_DASHBOARD_HEIGHT_PX"] = str(args.height_px)
         if args.render:
-            os.environ["KIS_DASHBOARD_PNG"] = str(png_out)
+            os.environ["KIS_DASHBOARD_PNG"] = str(image_out)
+            os.environ["KIS_DASHBOARD_IMAGE_PATH"] = str(image_out)
 
         with contextlib.redirect_stdout(io.StringIO()):
             data_module.main()
@@ -126,12 +139,12 @@ def cmd_generate(args):
                     "--message",
                     market_message_title(market),
                     "--media",
-                    str(png_out),
+                    str(image_out),
                 ],
                 check=True,
             )
 
-        print(str(png_out if args.render else json_out))
+        print(str(image_out if args.render else json_out))
     finally:
         if previous_json is None:
             os.environ.pop("KIS_DASHBOARD_JSON", None)
@@ -142,6 +155,11 @@ def cmd_generate(args):
             os.environ.pop("KIS_DASHBOARD_PNG", None)
         else:
             os.environ["KIS_DASHBOARD_PNG"] = previous_png
+
+        if previous_image_path is None:
+            os.environ.pop("KIS_DASHBOARD_IMAGE_PATH", None)
+        else:
+            os.environ["KIS_DASHBOARD_IMAGE_PATH"] = previous_image_path
 
         if previous_market is None:
             os.environ.pop("KIS_DASHBOARD_MARKET", None)
@@ -177,6 +195,16 @@ def cmd_generate(args):
             os.environ.pop("KIS_DASHBOARD_RENDER_SCALE", None)
         else:
             os.environ["KIS_DASHBOARD_RENDER_SCALE"] = previous_render_scale
+
+        if previous_image_format is None:
+            os.environ.pop("KIS_DASHBOARD_IMAGE_FORMAT", None)
+        else:
+            os.environ["KIS_DASHBOARD_IMAGE_FORMAT"] = previous_image_format
+
+        if previous_webp_quality is None:
+            os.environ.pop("KIS_DASHBOARD_WEBP_QUALITY", None)
+        else:
+            os.environ["KIS_DASHBOARD_WEBP_QUALITY"] = previous_webp_quality
 
 
 def cmd_watchlist_list(args):
@@ -250,12 +278,29 @@ def build_parser():
     )
     generate.add_argument("--out-dir", help="Directory for generated files. Default: ./tmp")
     generate.add_argument("--json-out", help="Explicit JSON output path. Overrides --out-dir.")
-    generate.add_argument("--png-out", help="Explicit PNG output path. Overrides --out-dir.")
+    generate.add_argument(
+        "--png-out",
+        "--image-out",
+        dest="png_out",
+        help="Explicit rendered image output path. Overrides --out-dir.",
+    )
+    generate.add_argument(
+        "--format",
+        choices=["png", "webp"],
+        default="png",
+        help="Rendered image format. Default: png",
+    )
+    generate.add_argument(
+        "--webp-quality",
+        type=int,
+        default=90,
+        help="WEBP quality when --format webp is used. Default: 90",
+    )
     generate.add_argument(
         "--width-px",
         type=int,
         default=1080,
-        help="Final PNG width in pixels. Default: 1080",
+        help="Final image width in pixels. Default: 1080",
     )
     generate.add_argument(
         "--height-px",

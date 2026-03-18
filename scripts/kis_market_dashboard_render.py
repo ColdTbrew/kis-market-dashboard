@@ -110,6 +110,23 @@ def png_path():
     return Path(os.getenv("KIS_DASHBOARD_PNG", ROOT / "tmp" / "kis_market_dashboard.png"))
 
 
+def image_path():
+    return Path(os.getenv("KIS_DASHBOARD_IMAGE_PATH", os.getenv("KIS_DASHBOARD_PNG", ROOT / "tmp" / "kis_market_dashboard.png")))
+
+
+def image_format():
+    return os.getenv("KIS_DASHBOARD_IMAGE_FORMAT", image_path().suffix.lstrip(".") or "png").lower()
+
+
+def webp_quality():
+    raw = os.getenv("KIS_DASHBOARD_WEBP_QUALITY", "90")
+    try:
+        value = int(raw)
+    except ValueError:
+        return 90
+    return max(1, min(100, value))
+
+
 def candle_width_scale():
     raw = os.getenv("KIS_DASHBOARD_CANDLE_WIDTH_SCALE", "1.0")
     try:
@@ -501,7 +518,7 @@ def main():
     for idx, card in enumerate(stock_cards):
         draw_card(draw, layouts[idx], card, palette)
 
-    output = png_path()
+    output = image_path()
     output.parent.mkdir(parents=True, exist_ok=True)
     target_width = OUTPUT_WIDTH
     base_height = max(1, int(height / RENDER_SCALE))
@@ -509,7 +526,12 @@ def main():
     target_height = OUTPUT_HEIGHT or scaled_height
     if image.size != (target_width, target_height):
         image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
-    image.save(output, optimize=True, compress_level=6)
+    output_format = image_format()
+    if output_format == "webp":
+        image = image.convert("RGB")
+        image.save(output, format="WEBP", quality=webp_quality(), method=6)
+    else:
+        image.save(output, format="PNG", optimize=True, compress_level=6)
     print(str(output))
 
 
