@@ -9,15 +9,15 @@ ROOT = Path(__file__).resolve().parent.parent
 JSON_PATH = Path(os.getenv("KIS_DASHBOARD_JSON", ROOT / "tmp" / "kis_market_dashboard.json"))
 PNG_PATH = Path(os.getenv("KIS_DASHBOARD_PNG", ROOT / "tmp" / "kis_market_dashboard.png"))
 
-WIDTH = 1440
-PADDING = 28
-GAP = 22
-CARD_HEIGHT = 620
-SUMMARY_GAP = 16
-SUMMARY_HEIGHT = 138
-HEADER_HEIGHT = 86
-BOTTOM_PADDING = 28
-COLS = 2
+WIDTH = 1080
+PADDING = 32
+GAP = 24
+CARD_HEIGHT = 760
+SUMMARY_GAP = 18
+SUMMARY_HEIGHT = 196
+HEADER_HEIGHT = 122
+BOTTOM_PADDING = 32
+COLS = 1
 
 
 def load_font(size, bold=False):
@@ -43,15 +43,15 @@ def load_font(size, bold=False):
     return ImageFont.load_default()
 
 
-FONT_H1 = load_font(40, bold=True)
-FONT_SUB = load_font(18)
-FONT_NAME = load_font(27, bold=True)
-FONT_PRICE = load_font(46, bold=True)
-FONT_META = load_font(22, bold=True)
-FONT_SMALL = load_font(16)
-FONT_TINY = load_font(13)
-FONT_AXIS = load_font(12)
-FONT_TAB = load_font(17, bold=True)
+FONT_H1 = load_font(56, bold=True)
+FONT_SUB = load_font(24)
+FONT_NAME = load_font(38, bold=True)
+FONT_PRICE = load_font(68, bold=True)
+FONT_META = load_font(30, bold=True)
+FONT_SMALL = load_font(22)
+FONT_TINY = load_font(18)
+FONT_AXIS = load_font(16)
+FONT_TAB = load_font(20, bold=True)
 
 
 def draw_text(draw, xy, text, font, fill):
@@ -75,20 +75,9 @@ def draw_line(draw, points, fill, width):
 def stock_card_layout(cards, start_y):
     layouts = []
     y = start_y
-
-    if len(cards) <= 3:
-        for _ in cards:
-            layouts.append((PADDING, y, WIDTH - PADDING, y + CARD_HEIGHT))
-            y += CARD_HEIGHT + GAP
-        return layouts
-
-    card_width = (WIDTH - (PADDING * 2) - GAP) // COLS
-    for index in range(len(cards)):
-        row = index // COLS
-        col = index % COLS
-        x0 = PADDING + col * (card_width + GAP)
-        y0 = start_y + row * (CARD_HEIGHT + GAP)
-        layouts.append((x0, y0, x0 + card_width, y0 + CARD_HEIGHT))
+    for _ in cards:
+        layouts.append((PADDING, y, WIDTH - PADDING, y + CARD_HEIGHT))
+        y += CARD_HEIGHT + GAP
     return layouts
 
 
@@ -96,19 +85,27 @@ def summary_card_layout(cards, start_y):
     layouts = []
     if not cards:
         return layouts
-    cols = len(cards)
-    card_width = (WIDTH - (PADDING * 2) - SUMMARY_GAP * (cols - 1)) // cols
-    x = PADDING
-    for _ in cards:
-        layouts.append((x, start_y, x + card_width, start_y + SUMMARY_HEIGHT))
-        x += card_width + SUMMARY_GAP
+    cols = 2
+    card_width = (WIDTH - (PADDING * 2) - SUMMARY_GAP) // cols
+    index = 0
+    while index < len(cards):
+        remaining = len(cards) - index
+        if remaining == 1:
+            y = start_y + (index // cols) * (SUMMARY_HEIGHT + SUMMARY_GAP)
+            layouts.append((PADDING, y, WIDTH - PADDING, y + SUMMARY_HEIGHT))
+            break
+        row = index // cols
+        y0 = start_y + row * (SUMMARY_HEIGHT + SUMMARY_GAP)
+        layouts.append((PADDING, y0, PADDING + card_width, y0 + SUMMARY_HEIGHT))
+        layouts.append((PADDING + card_width + SUMMARY_GAP, y0, WIDTH - PADDING, y0 + SUMMARY_HEIGHT))
+        index += cols
     return layouts
 
 
 def chart_bounds(box):
     x0, y0, x1, y1 = box
-    chart_bottom = y1 - 78
-    return x0 + 16, y0 + 188, x1 - 16, chart_bottom
+    chart_bottom = y1 - 92
+    return x0 + 20, y0 + 232, x1 - 20, chart_bottom
 
 
 def flatten_segments(segments):
@@ -177,7 +174,7 @@ def draw_chart(draw, box, chart):
     max_minute = max(hhmmss_to_minutes(point["time_raw"]) for point in all_points)
     minute_span = max(1, max_minute - min_minute)
     dividers = []
-    candle_width = max(6, int(plot_width / max(94, minute_span / 5)))
+    candle_width = max(8, int(plot_width / max(86, minute_span / 5)))
     highest = None
     lowest = None
 
@@ -281,56 +278,55 @@ def draw_chart(draw, box, chart):
         x = plot_x0 + (plot_width * (minute - min_minute) / minute_span)
         draw.line((x, plot_y0, x, plot_y1), fill="#f5f7fa", width=1)
         text_w, _ = measure(FONT_AXIS, label)
-        draw_text(draw, (x - text_w / 2, plot_y1 + 8), label, FONT_AXIS, "#7c8ea0")
+        draw_text(draw, (x - text_w / 2, plot_y1 + 12), label, FONT_AXIS, "#7c8ea0")
 
     warnings = chart.get("warnings", [])
     if warnings:
         warning_y = cy1 + 12
         for warning in warnings[:2]:
             draw_text(draw, (cx0 + 2, warning_y), warning, FONT_TINY, "#c2410c")
-            warning_y += 18
+            warning_y += 24
 
 
 def draw_card(draw, box, card):
     x0, y0, x1, y1 = box
-    rounded(draw, box, 26, fill="#ffffff", outline="#dbe6f0")
+    rounded(draw, box, 30, fill="#ffffff", outline="#dbe6f0")
 
-    draw_text(draw, (x0 + 20, y0 + 22), card.get("name", "-"), FONT_NAME, "#14202b")
-    draw_text(draw, (x0 + 20, y0 + 68), card.get("price", "-"), FONT_PRICE, "#14202b")
+    draw_text(draw, (x0 + 28, y0 + 28), card.get("name", "-"), FONT_NAME, "#14202b")
+    draw_text(draw, (x0 + 28, y0 + 86), card.get("price", "-"), FONT_PRICE, "#14202b")
     market = card.get("market", "-")
     market_w, market_h = measure(FONT_TINY, market)
-    pill_x1 = x1 - 22
-    pill_x0 = pill_x1 - market_w - 20
-    pill_y0 = y0 + 24
-    pill_y1 = pill_y0 + market_h + 10
-    rounded(draw, (pill_x0, pill_y0, pill_x1, pill_y1), 12, fill="#f5f9fd", outline="#dbe6f0")
-    draw_text(draw, (pill_x0 + 10, pill_y0 + 4), market, FONT_TINY, "#6f8295")
+    pill_x1 = x1 - 28
+    pill_x0 = pill_x1 - market_w - 26
+    pill_y0 = y0 + 30
+    pill_y1 = pill_y0 + market_h + 14
+    rounded(draw, (pill_x0, pill_y0, pill_x1, pill_y1), 14, fill="#f5f9fd", outline="#dbe6f0")
+    draw_text(draw, (pill_x0 + 13, pill_y0 + 6), market, FONT_TINY, "#6f8295")
 
     pct = str(card.get("pct", ""))
     meta_color = "#059669" if pct.startswith("+") else "#dc2626" if pct.startswith("-") else "#64748b"
-    draw_text(draw, (x0 + 20, y0 + 126), f"어제보다 {card.get('diff', '-')} ({pct})", FONT_META, meta_color)
-    draw_text(draw, (x0 + 20, y0 + 166), "차트", FONT_META, "#5c6978")
+    draw_text(draw, (x0 + 28, y0 + 176), f"어제보다 {card.get('diff', '-')} ({pct})", FONT_META, meta_color)
 
     draw_chart(draw, box, card.get("chart", {}))
 
-    footer_y = y1 - 38
-    draw_text(draw, (x0 + 20, footer_y), "KIS Open API", FONT_SMALL, "#7b8a9b")
+    footer_y = y1 - 48
+    draw_text(draw, (x0 + 28, footer_y), "KIS Open API", FONT_SMALL, "#7b8a9b")
     interval = card.get("chart", {}).get("interval_minutes")
     tag = f"KIS {interval}m candles" if interval else "KIS intraday"
     tag_width, _ = measure(FONT_SMALL, tag)
-    draw_text(draw, (x1 - 20 - tag_width, footer_y), tag, FONT_SMALL, "#7b8a9b")
+    draw_text(draw, (x1 - 28 - tag_width, footer_y), tag, FONT_SMALL, "#7b8a9b")
 
 
 def draw_summary_card(draw, box, card):
     x0, y0, x1, y1 = box
-    rounded(draw, box, 22, fill="#ffffff", outline="#dbe6f0")
-    draw_text(draw, (x0 + 16, y0 + 16), card.get("name", "-"), FONT_SMALL, "#66788a")
+    rounded(draw, box, 28, fill="#ffffff", outline="#dbe6f0")
+    draw_text(draw, (x0 + 22, y0 + 24), card.get("name", "-"), FONT_SMALL, "#66788a")
     market = card.get("market", "")
     if market:
         mw, mh = measure(FONT_TINY, market)
-        rounded(draw, (x1 - mw - 24, y0 + 14, x1 - 12, y0 + mh + 22), 10, fill="#f5f9fd", outline="#dbe6f0")
-        draw_text(draw, (x1 - mw - 18, y0 + 18), market, FONT_TINY, "#90a2b5")
-    draw_text(draw, (x0 + 16, y0 + 46), card.get("price", "-"), FONT_NAME, "#14202b")
+        rounded(draw, (x1 - mw - 30, y0 + 20, x1 - 18, y0 + mh + 30), 12, fill="#f5f9fd", outline="#dbe6f0")
+        draw_text(draw, (x1 - mw - 24, y0 + 26), market, FONT_TINY, "#90a2b5")
+    draw_text(draw, (x0 + 22, y0 + 72), card.get("price", "-"), FONT_PRICE, "#14202b")
     pct = str(card.get("pct", ""))
     status = card.get("status", "")
     meta_color = "#059669" if pct.startswith("+") else "#dc2626" if pct.startswith("-") else "#64748b"
@@ -342,7 +338,7 @@ def draw_summary_card(draw, box, card):
         meta = f"{label} {diff} ({pct})".strip()
     else:
         meta = f"{label} {diff}".strip()
-    draw_text(draw, (x0 + 16, y0 + 88), meta, FONT_SMALL, meta_color)
+    draw_text(draw, (x0 + 22, y0 + 150), meta, FONT_SMALL, meta_color)
 
 
 def main():
@@ -351,7 +347,7 @@ def main():
     stock_cards = data.get("stock_cards", [])
     summary_y = PADDING + HEADER_HEIGHT
     summary_layouts = summary_card_layout(summary_cards, summary_y)
-    stocks_y = (summary_layouts[0][3] + 28) if summary_layouts else (PADDING + HEADER_HEIGHT)
+    stocks_y = (max(box[3] for box in summary_layouts) + 30) if summary_layouts else (PADDING + HEADER_HEIGHT)
     layouts = stock_card_layout(stock_cards, stocks_y)
     content_bottom = max(
         [box[3] for box in summary_layouts] + [box[3] for box in layouts] + [PADDING + HEADER_HEIGHT + CARD_HEIGHT]
@@ -374,12 +370,12 @@ def main():
         draw.line((0, y, WIDTH, y), fill=color)
 
     draw_text(draw, (PADDING, PADDING), data.get("title", "KR Market Dashboard"), FONT_H1, "#10202f")
-    draw_text(draw, (PADDING, PADDING + 50), data.get("subtitle", "KIS intraday"), FONT_SUB, "#6f8295")
+    draw_text(draw, (PADDING, PADDING + 68), data.get("subtitle", "KIS intraday"), FONT_SUB, "#6f8295")
     generated_at = data.get("generated_at", "")
     if generated_at:
         stamp = generated_at.replace("T", " ")
         stamp_w, _ = measure(FONT_TINY, stamp)
-        draw_text(draw, (WIDTH - PADDING - stamp_w, PADDING + 10), stamp, FONT_TINY, "#93a4b5")
+        draw_text(draw, (WIDTH - PADDING - stamp_w, PADDING + 18), stamp, FONT_TINY, "#93a4b5")
 
     for idx, card in enumerate(summary_cards):
         draw_summary_card(draw, summary_layouts[idx], card)
