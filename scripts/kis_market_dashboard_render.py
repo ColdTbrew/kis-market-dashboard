@@ -6,8 +6,6 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-JSON_PATH = Path(os.getenv("KIS_DASHBOARD_JSON", ROOT / "tmp" / "kis_market_dashboard.json"))
-PNG_PATH = Path(os.getenv("KIS_DASHBOARD_PNG", ROOT / "tmp" / "kis_market_dashboard.png"))
 
 WIDTH = 1080
 PADDING = 32
@@ -52,6 +50,14 @@ FONT_SMALL = load_font(18)
 FONT_TINY = load_font(18)
 FONT_AXIS = load_font(16)
 FONT_TAB = load_font(20, bold=True)
+
+
+def json_path():
+    return Path(os.getenv("KIS_DASHBOARD_JSON", ROOT / "tmp" / "kis_market_dashboard.json"))
+
+
+def png_path():
+    return Path(os.getenv("KIS_DASHBOARD_PNG", ROOT / "tmp" / "kis_market_dashboard.png"))
 
 
 def draw_text(draw, xy, text, font, fill):
@@ -137,6 +143,21 @@ def format_axis_value(value):
 def hhmmss_to_minutes(value):
     raw = str(value or "").zfill(6)
     return int(raw[:2]) * 60 + int(raw[2:4])
+
+
+def minutes_to_label(value):
+    hour = int(value // 60) % 24
+    minute = int(value % 60)
+    return f"{hour:02d}:{minute:02d}"
+
+
+def build_axis_marks(all_points):
+    minutes = sorted({hhmmss_to_minutes(point["time_raw"]) for point in all_points})
+    if len(minutes) <= 4:
+        return [(minutes_to_label(value), value) for value in minutes]
+
+    indices = sorted({0, len(minutes) // 3, (len(minutes) * 2) // 3, len(minutes) - 1})
+    return [(minutes_to_label(minutes[index]), minutes[index]) for index in indices]
 
 
 def draw_chart(draw, box, chart):
@@ -264,17 +285,8 @@ def draw_chart(draw, box, chart):
         ly = min(plot_y1 - lh, lowest["y"] + 8)
         draw_text(draw, (lx, ly), label, FONT_SMALL, "#98a4b3")
 
-    axis_marks = [
-        ("08:00", "080000"),
-        ("09:00", "090000"),
-        ("12:00", "120000"),
-        ("15:30", "153000"),
-        ("19:59", "195900"),
-    ]
-    for label, raw in axis_marks:
-        minute = hhmmss_to_minutes(raw)
-        if minute < min_minute or minute > max_minute:
-            continue
+    axis_marks = build_axis_marks(all_points)
+    for label, minute in axis_marks:
         x = plot_x0 + (plot_width * (minute - min_minute) / minute_span)
         draw.line((x, plot_y0, x, plot_y1), fill="#f5f7fa", width=1)
         text_w, _ = measure(FONT_AXIS, label)
@@ -342,7 +354,7 @@ def draw_summary_card(draw, box, card):
 
 
 def main():
-    data = json.loads(JSON_PATH.read_text())
+    data = json.loads(json_path().read_text())
     summary_cards = data.get("summary_cards", [])
     stock_cards = data.get("stock_cards", [])
     summary_y = PADDING + HEADER_HEIGHT
@@ -383,9 +395,10 @@ def main():
     for idx, card in enumerate(stock_cards):
         draw_card(draw, layouts[idx], card)
 
-    PNG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    image.save(PNG_PATH)
-    print(str(PNG_PATH))
+    output = png_path()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    image.save(output)
+    print(str(output))
 
 
 if __name__ == "__main__":

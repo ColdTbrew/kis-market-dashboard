@@ -1,17 +1,18 @@
 # KIS Market Dashboard
 
-한국투자증권(KIS) Open API 기반 KR 마켓 대시보드 프로젝트.
+한국투자증권(KIS) Open API 기반 KR / US 마켓 대시보드 프로젝트.
 
 ## 목표
 - 관심 종목 가격/등락률을 이미지 카드로 모니터링
 - 장전 `NXT`, 정규장 `KRX`, 장후 `NXT` 흐름을 당일 캔들차트로 확인
+- 미국장 관심 종목을 별도 watchlist로 분리해 5분봉 캔들차트로 확인
 - **KIS API → JSON → native PNG** 구조로 유지
 
 ## 현재 구조
 - `scripts/kis_market_dashboard_data.py`
   - KIS 토큰 발급
-  - 국내 주식 현재가 조회
-  - `NXT Pre → KRX → NXT Post` 세션별 당일 분봉 수집
+  - KR / US 시장별 현재가 조회
+  - `NXT Pre → KRX → NXT Post` 또는 US 5분봉 당일 분봉 수집
   - 5분봉 OHLC JSON 생성
 - `scripts/kis_market_dashboard_render.py`
   - Pillow 기반 네이티브 PNG 렌더러
@@ -22,11 +23,17 @@
 - `pyproject.toml`
   - `uv` 기반 Python 의존성 관리
 
-## 현재 카드 구성
+## 현재 기본 KR 카드 구성
 - Samsung Electronics (005930)
 - SK Hynix (000660)
 - SK Telecom (017670)
 - Hyundai Motor (005380)
+
+## 현재 기본 US 카드 구성
+- Apple (AAPL)
+- Microsoft (MSFT)
+- NVIDIA (NVDA)
+- Tesla (TSLA)
 
 ## 환경 준비
 ```bash
@@ -50,24 +57,30 @@ export OPENCLAW_ACCOUNT="default"
 ## 실행
 ```bash
 uv run python kis_market_dashboard.py generate
+uv run python kis_market_dashboard.py generate --market us
 ```
 
 ## Watchlist CLI
-현재 종목 리스트는 `config/watchlist.json`에서 관리합니다.
+현재 종목 리스트는 시장별로 따로 관리합니다.
+- `config/watchlist.kr.json`
+- `config/watchlist.us.json`
 
 조회:
 ```bash
 uv run python kis_market_dashboard.py watchlist list
+uv run python kis_market_dashboard.py watchlist list --market us
 ```
 
 추가:
 ```bash
 uv run python kis_market_dashboard.py watchlist add 000270 Kia
+uv run python kis_market_dashboard.py watchlist add --market us AAPL Apple --excd NAS
 ```
 
 제거:
 ```bash
 uv run python kis_market_dashboard.py watchlist remove 000270
+uv run python kis_market_dashboard.py watchlist remove --market us AAPL
 ```
 
 도움말:
@@ -82,8 +95,10 @@ uv run python kis_market_dashboard.py watchlist --help
 - 없으면 생성된 PNG 경로를 stdout으로 출력
 
 생성 결과:
-- `tmp/kis_market_dashboard.json`
-- `tmp/kis_market_dashboard.png`
+- `tmp/kis_market_dashboard.kr.json`
+- `tmp/kis_market_dashboard.kr.png`
+- `tmp/kis_market_dashboard.us.json`
+- `tmp/kis_market_dashboard.us.png`
 
 ## JSON 스키마 예시
 - `schemas/dashboard.example.json`

@@ -11,7 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT / "scripts"
 DEFAULT_OUT_DIR = ROOT / "tmp"
-DEFAULT_WATCHLIST_PATH = ROOT / "config" / "watchlist.json"
+CONFIG_DIR = ROOT / "config"
+LEGACY_WATCHLIST_PATH = CONFIG_DIR / "watchlist.json"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
@@ -19,33 +20,72 @@ import kis_market_dashboard_data as data_module
 import kis_market_dashboard_render as render_module
 
 
-def watchlist_path_from_env():
-    return Path(os.getenv("KIS_DASHBOARD_WATCHLIST", DEFAULT_WATCHLIST_PATH))
+def normalize_market(value):
+    return (value or "kr").strip().lower()
 
 
-def load_watchlist():
-    path = watchlist_path_from_env()
+def watchlist_path_for_market(market):
+    override = os.getenv("KIS_DASHBOARD_WATCHLIST")
+    if override:
+        return Path(override)
+
+    normalized = normalize_market(market)
+    path = CONFIG_DIR / f"watchlist.{normalized}.json"
+    if normalized == "kr" and not path.exists() and LEGACY_WATCHLIST_PATH.exists():
+        return LEGACY_WATCHLIST_PATH
+    return path
+
+
+def load_watchlist(market):
+    path = watchlist_path_for_market(market)
     if not path.exists():
         return []
     return json.loads(path.read_text())
 
 
-def save_watchlist(watchlist):
-    path = watchlist_path_from_env()
+def save_watchlist(watchlist, market):
+    normalized = normalize_market(market)
+    path = CONFIG_DIR / f"watchlist.{normalized}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(watchlist, ensure_ascii=False, indent=2))
 
 
+def default_json_path(out_dir, market):
+    return out_dir / f"kis_market_dashboard.{normalize_market(market)}.json"
+
+
+def default_png_path(out_dir, market):
+    return out_dir / f"kis_market_dashboard.{normalize_market(market)}.png"
+
+
+def market_message_title(market):
+    return "KR 마켓 대시보드" if normalize_market(market) == "kr" else "US 마켓 대시보드"
+
+
+def exchange_label(excd):
+    return {
+        "NAS": "NASDAQ",
+        "NYS": "NYSE",
+        "AMS": "AMEX",
+    }.get((excd or "").strip().upper(), (excd or "").strip().upper())
+
+
 def cmd_generate(args):
+    market = normalize_market(args.market)
     out_dir = Path(args.out_dir) if args.out_dir else DEFAULT_OUT_DIR
-    json_out = Path(args.json_out) if args.json_out else out_dir / "kis_market_dashboard.json"
-    png_out = Path(args.png_out) if args.png_out else out_dir / "kis_market_dashboard.png"
+    json_out = Path(args.json_out) if args.json_out else default_json_path(out_dir, market)
+    png_out = Path(args.png_out) if args.png_out else default_png_path(out_dir, market)
+    watchlist_path = watchlist_path_for_market(market)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     previous_json = os.environ.get("KIS_DASHBOARD_JSON")
     previous_png = os.environ.get("KIS_DASHBOARD_PNG")
+    previous_market = os.environ.get("KIS_DASHBOARD_MARKET")
+    previous_watchlist = os.environ.get("KIS_DASHBOARD_WATCHLIST")
     try:
         os.environ["KIS_DASHBOARD_JSON"] = str(json_out)
+        os.environ["KIS_DASHBOARD_MARKET"] = market
+        os.environ["KIS_DASHBOARD_WATCHLIST"] = str(watchlist_path)
         if args.render:
             os.environ["KIS_DASHBOARD_PNG"] = str(png_out)
 
@@ -73,7 +113,7 @@ def cmd_generate(args):
                     "--target",
                     target,
                     "--message",
-                    "KR 마켓 대시보드",
+                    market_message_title(market),
                     "--media",
                     str(png_out),
                 ],
@@ -92,51 +132,86 @@ def cmd_generate(args):
         else:
             os.environ["KIS_DASHBOARD_PNG"] = previous_png
 
+        if previous_market is None:
+            os.environ.pop("KIS_DASHBOARD_MARKET", None)
+        else:
+            os.environ["KIS_DASHBOARD_MARKET"] = previous_market
 
-def cmd_watchlist_list(_args):
-    watchlist = load_watchlist()
+        if previous_watchlist is None:
+            os.environ.pop("KIS_DASHBOARD_WATCHLIST", None)
+        else:
+            os.environ["KIS_DASHBOARD_WATCHLIST"] = previous_watchlist
+
+
+def cmd_watchlist_list(args):
+    market = normalize_market(args.market)
+    watchlist = load_watchlist(market)
     if not watchlist:
         print("watchlist is empty")
         return
     for item in watchlist:
-        print(f"{item['code']}\t{item['name']}")
+        if market == "us":
+            excd = item.get("excd", "")
+            print(f"{item['code']}\t{item['name']}\t{excd}\t{item.get('market', '')}")
+            continue
+        print(f"{item['code']}\t{item['name']}\t{item.get('market', '')}")
 
 
 def cmd_watchlist_add(args):
-    watchlist = load_watchlist()
-    code = args.code.strip()
-    if any(item.get("code") == code for item in watchlist):
+    market = normalize_market(args.market)
+    watchlist = load_watchlist(market)
+    code = args.code.strip().upper() if market == "us" else args.code.strip()
+    if any(str(item.get("code", "")).upper() == code.upper() for item in watchlist):
         print(f"already exists: {code}")
         return
-    item = {
-        "type": "stock",
-        "name": args.name.strip(),
-        "code": code,
-        "market": args.market.strip() if args.market else code,
-    }
+
+    if market == "us":
+        excd = (args.excd or "NAS").strip().upper()
+        item = {
+            "type": "stock",
+            "name": args.name.strip(),
+            "code": code,
+            "market": args.market_label.strip() if args.market_label else exchange_label(excd),
+            "excd": excd,
+        }
+    else:
+        item = {
+            "type": "stock",
+            "name": args.name.strip(),
+            "code": code,
+            "market": args.market_label.strip() if args.market_label else code,
+        }
+
     watchlist.append(item)
-    save_watchlist(watchlist)
+    save_watchlist(watchlist, market)
     print(f"added: {code}\t{item['name']}")
 
 
 def cmd_watchlist_remove(args):
-    watchlist = load_watchlist()
-    code = args.code.strip()
-    filtered = [item for item in watchlist if item.get("code") != code]
+    market = normalize_market(args.market)
+    watchlist = load_watchlist(market)
+    code = args.code.strip().upper() if market == "us" else args.code.strip()
+    filtered = [item for item in watchlist if str(item.get("code", "")).upper() != code.upper()]
     if len(filtered) == len(watchlist):
         print(f"not found: {code}")
         return
-    save_watchlist(filtered)
+    save_watchlist(filtered, market)
     print(f"removed: {code}")
 
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Generate the KIS market dashboard image and manage the stock watchlist."
+        description="Generate the KIS market dashboard image and manage market-specific stock watchlists."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     generate = subparsers.add_parser("generate", help="Fetch market data and render the dashboard image.")
+    generate.add_argument(
+        "--market",
+        choices=["kr", "us"],
+        default="kr",
+        help="Dashboard market. Uses market-specific summary cards and watchlist.",
+    )
     generate.add_argument("--out-dir", help="Directory for generated files. Default: ./tmp")
     generate.add_argument("--json-out", help="Explicit JSON output path. Overrides --out-dir.")
     generate.add_argument("--png-out", help="Explicit PNG output path. Overrides --out-dir.")
@@ -156,20 +231,30 @@ def build_parser():
     generate.add_argument("--account", help="openclaw account. Defaults to OPENCLAW_ACCOUNT or default.")
     generate.set_defaults(func=cmd_generate, render=True)
 
-    watchlist = subparsers.add_parser("watchlist", help="Inspect or modify the dashboard stock watchlist.")
+    watchlist = subparsers.add_parser("watchlist", help="Inspect or modify a market-specific stock watchlist.")
     watchlist_subparsers = watchlist.add_subparsers(dest="watchlist_command", required=True)
 
     watchlist_list = watchlist_subparsers.add_parser("list", help="Print the current watchlist.")
+    watchlist_list.add_argument("--market", choices=["kr", "us"], default="kr", help="Watchlist market.")
     watchlist_list.set_defaults(func=cmd_watchlist_list)
 
     watchlist_add = watchlist_subparsers.add_parser("add", help="Add a stock to the watchlist.")
-    watchlist_add.add_argument("code", help="6-digit stock code, for example 000270.")
+    watchlist_add.add_argument("--market", choices=["kr", "us"], default="kr", help="Watchlist market.")
+    watchlist_add.add_argument("code", help="KR 6-digit code or US ticker symbol.")
     watchlist_add.add_argument("name", help="Display name shown on the dashboard.")
-    watchlist_add.add_argument("--market", help="Optional market pill label. Defaults to the stock code.")
+    watchlist_add.add_argument(
+        "--market-label",
+        help="Optional card pill label. KR defaults to the code, US defaults to the exchange label.",
+    )
+    watchlist_add.add_argument(
+        "--excd",
+        help="US exchange code for KIS, for example NAS or NYS. Ignored for KR. Default: NAS",
+    )
     watchlist_add.set_defaults(func=cmd_watchlist_add)
 
     watchlist_remove = watchlist_subparsers.add_parser("remove", help="Remove a stock from the watchlist.")
-    watchlist_remove.add_argument("code", help="6-digit stock code to remove.")
+    watchlist_remove.add_argument("--market", choices=["kr", "us"], default="kr", help="Watchlist market.")
+    watchlist_remove.add_argument("code", help="KR 6-digit code or US ticker symbol to remove.")
     watchlist_remove.set_defaults(func=cmd_watchlist_remove)
 
     return parser

@@ -14,26 +14,41 @@ APPSECRET = os.getenv("KIS_APPSECRET", "")
 BASE_URL = os.getenv("KIS_BASE_URL", "") or "https://openapi.koreainvestment.com:9443"
 CANO = os.getenv("KIS_CANO", "")
 ACNT_PRDT_CD = os.getenv("KIS_ACNT_PRDT_CD", "")
-OUT = Path(os.getenv("KIS_DASHBOARD_JSON", "./tmp/kis_market_dashboard.json"))
-TOKEN_CACHE = OUT.parent / ".kis_access_token.json"
 ROOT = Path(__file__).resolve().parent.parent
-WATCHLIST_PATH = Path(os.getenv("KIS_DASHBOARD_WATCHLIST", ROOT / "config" / "watchlist.json"))
-OUT.parent.mkdir(parents=True, exist_ok=True)
+CONFIG_DIR = ROOT / "config"
+LEGACY_WATCHLIST_PATH = CONFIG_DIR / "watchlist.json"
 
-DEFAULT_WATCHLIST = [
-    {"type": "stock", "name": "Samsung Elec.", "code": "005930", "market": "005930"},
-    {"type": "stock", "name": "SK Hynix", "code": "000660", "market": "000660"},
-    {"type": "stock", "name": "SK Telecom", "code": "017670", "market": "017670"},
-    {"type": "stock", "name": "Hyundai Motor", "code": "005380", "market": "005380"},
-]
+DEFAULT_WATCHLISTS = {
+    "kr": [
+        {"type": "stock", "name": "Samsung Elec.", "code": "005930", "market": "005930"},
+        {"type": "stock", "name": "SK Hynix", "code": "000660", "market": "000660"},
+        {"type": "stock", "name": "SK Telecom", "code": "017670", "market": "017670"},
+        {"type": "stock", "name": "Hyundai Motor", "code": "005380", "market": "005380"},
+    ],
+    "us": [
+        {"type": "stock", "name": "Apple", "code": "AAPL", "market": "NASDAQ", "excd": "NAS"},
+        {"type": "stock", "name": "Microsoft", "code": "MSFT", "market": "NASDAQ", "excd": "NAS"},
+        {"type": "stock", "name": "NVIDIA", "code": "NVDA", "market": "NASDAQ", "excd": "NAS"},
+        {"type": "stock", "name": "Tesla", "code": "TSLA", "market": "NASDAQ", "excd": "NAS"},
+    ],
+}
 
-SUMMARY_ITEMS = [
-    {"type": "kr_index", "name": "KOSPI", "code": "0001", "market": "KOSPI"},
-    {"type": "kr_index", "name": "KOSDAQ", "code": "1001", "market": "KOSDAQ"},
-    {"type": "overseas_index", "name": "NASDAQ", "code": "NDX", "market": "NASDAQ-100", "label": "전일 종가", "price_digits": 2},
-    {"type": "fx", "name": "USD/KRW", "market": "FX", "label": "환율", "price_digits": 2, "anchor_excd": "NAS", "anchor_symb": "AAPL"},
-    {"type": "commodity", "name": "WTI", "code": "CL", "market": "NYMEX", "label": "유가", "price_digits": 2},
-]
+SUMMARY_ITEMS_BY_MARKET = {
+    "kr": [
+        {"type": "kr_index", "name": "KOSPI", "code": "0001", "market": "KOSPI"},
+        {"type": "kr_index", "name": "KOSDAQ", "code": "1001", "market": "KOSDAQ"},
+        {"type": "overseas_index", "name": "NASDAQ", "code": "NDX", "market": "NASDAQ-100", "label": "전일 종가", "price_digits": 2},
+        {"type": "fx", "name": "USD/KRW", "market": "FX", "label": "환율", "price_digits": 2, "anchor_excd": "NAS", "anchor_symb": "AAPL"},
+        {"type": "commodity", "name": "WTI", "code": "CL", "market": "NYMEX", "label": "유가", "price_digits": 2},
+    ],
+    "us": [
+        {"type": "overseas_index", "name": "S&P 500", "code": "SPX", "market": "S&P 500", "label": "전일 종가", "price_digits": 2},
+        {"type": "overseas_index", "name": "NASDAQ", "code": "NDX", "market": "NASDAQ-100", "label": "전일 종가", "price_digits": 2},
+        {"type": "kr_index", "name": "KOSPI", "code": "0001", "market": "KOSPI"},
+        {"type": "fx", "name": "USD/KRW", "market": "FX", "label": "환율", "price_digits": 2, "anchor_excd": "NAS", "anchor_symb": "AAPL"},
+        {"type": "commodity", "name": "WTI", "code": "CL", "market": "NYMEX", "label": "유가", "price_digits": 2},
+    ],
+}
 
 if SECRETS_PATH.exists() and (not APPKEY or not APPSECRET):
     try:
@@ -73,24 +88,59 @@ def http_json(url, method="GET", headers=None, payload=None):
         raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
 
 
-def load_watchlist():
-    if WATCHLIST_PATH.exists():
+def normalize_market(value):
+    normalized = (value or "kr").strip().lower()
+    return normalized if normalized in {"kr", "us"} else "kr"
+
+
+def current_market():
+    return normalize_market(os.getenv("KIS_DASHBOARD_MARKET", "kr"))
+
+
+def output_json_path():
+    path = Path(os.getenv("KIS_DASHBOARD_JSON", ROOT / "tmp" / "kis_market_dashboard.json"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def token_cache_path():
+    return output_json_path().parent / ".kis_access_token.json"
+
+
+def watchlist_path_for_market(market):
+    override = os.getenv("KIS_DASHBOARD_WATCHLIST")
+    if override:
+        return Path(override)
+
+    normalized = normalize_market(market)
+    path = CONFIG_DIR / f"watchlist.{normalized}.json"
+    if normalized == "kr" and not path.exists() and LEGACY_WATCHLIST_PATH.exists():
+        return LEGACY_WATCHLIST_PATH
+    return path
+
+
+def load_watchlist(market):
+    watchlist_path = watchlist_path_for_market(market)
+    if watchlist_path.exists():
         try:
-            watchlist = json.loads(WATCHLIST_PATH.read_text())
+            watchlist = json.loads(watchlist_path.read_text())
             if isinstance(watchlist, list) and watchlist:
                 return watchlist
         except Exception:
             pass
-    WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    WATCHLIST_PATH.write_text(json.dumps(DEFAULT_WATCHLIST, ensure_ascii=False, indent=2))
-    return DEFAULT_WATCHLIST
+    defaults = DEFAULT_WATCHLISTS[normalize_market(market)]
+    watchlist_path = CONFIG_DIR / f"watchlist.{normalize_market(market)}.json"
+    watchlist_path.parent.mkdir(parents=True, exist_ok=True)
+    watchlist_path.write_text(json.dumps(defaults, ensure_ascii=False, indent=2))
+    return defaults
 
 
 def read_cached_token():
-    if not TOKEN_CACHE.exists():
+    cache_path = token_cache_path()
+    if not cache_path.exists():
         return None
     try:
-        cache = json.loads(TOKEN_CACHE.read_text())
+        cache = json.loads(cache_path.read_text())
     except Exception:
         return None
 
@@ -110,7 +160,7 @@ def read_cached_token():
 
 def write_cached_token(token, expires_in):
     expires_at = datetime.now(UTC) + timedelta(seconds=max(0, int(expires_in) - 60))
-    TOKEN_CACHE.write_text(json.dumps({
+    token_cache_path().write_text(json.dumps({
         "access_token": token,
         "expires_at": expires_at.isoformat(),
     }))
@@ -234,6 +284,28 @@ def quote_card(token, code):
     }
 
 
+def us_quote_card(token, excd, symbol, digits=2):
+    data = kis_get(
+        token,
+        "/uapi/overseas-price/v1/quotations/price",
+        {
+            "AUTH": "",
+            "EXCD": excd,
+            "SYMB": symbol,
+        },
+        "HHDFS00000300",
+    )
+    out = data.get("output", {})
+    raw_price = parse_number(out.get("last"))
+    sign_code = out.get("sign")
+    return {
+        "price": format_decimal(raw_price, digits=digits),
+        "diff": format_pct_or_diff_decimal(out.get("diff"), sign_code, digits=digits),
+        "pct": format_pct(out.get("rate"), sign_code),
+        "raw_price": raw_price or 0.0,
+    }
+
+
 def index_quote_card(token, code):
     data = kis_get(
         token,
@@ -304,6 +376,27 @@ def normalize_index_chart_row(row, session):
         "low": low_price,
         "close": price,
         "volume": parse_int(row.get("cntg_vol")) or 0,
+        "session": session,
+    }
+
+
+def normalize_us_chart_row(row, session):
+    close_price = parse_number(row.get("last"))
+    open_price = parse_number(row.get("open"))
+    high_price = parse_number(row.get("high"))
+    low_price = parse_number(row.get("low"))
+    time_raw = str(row.get("khms") or row.get("xhms") or "").strip()
+    if None in (close_price, open_price, high_price, low_price) or not is_valid_time_raw(time_raw):
+        return None
+    return {
+        "time": f"{time_raw[:2]}:{time_raw[2:4]}",
+        "time_raw": time_raw,
+        "price": close_price,
+        "open": open_price,
+        "high": high_price,
+        "low": low_price,
+        "close": close_price,
+        "volume": parse_int(row.get("evol")) or 0,
         "session": session,
     }
 
@@ -453,6 +546,53 @@ def fetch_intraday_chart(token, code):
     }
 
 
+def fetch_us_intraday_chart(token, excd, symbol, interval_minutes=5):
+    try:
+        data = kis_get(
+            token,
+            "/uapi/overseas-price/v1/quotations/inquire-time-itemchartprice",
+            {
+                "AUTH": "",
+                "EXCD": excd,
+                "SYMB": symbol,
+                "NMIN": str(interval_minutes),
+                "PINC": "0",
+                "NEXT": "",
+                "NREC": "120",
+                "FILL": "",
+                "KEYB": "",
+            },
+            "HHDFS76950200",
+        )
+    except RuntimeError as exc:
+        return {
+            "segments": [],
+            "warnings": [str(exc)],
+            "interval_minutes": interval_minutes,
+        }
+
+    rows = data.get("output2") or []
+    points = []
+    seen_times = set()
+    for row in rows:
+        normalized = normalize_us_chart_row(row, "US")
+        if not normalized or normalized["time_raw"] in seen_times:
+            continue
+        seen_times.add(normalized["time_raw"])
+        points.append(normalized)
+
+    points.sort(key=lambda item: item["time_raw"])
+    return {
+        "segments": [{
+            "session": "US",
+            "color": "#2563eb",
+            "points": points,
+        }] if points else [],
+        "warnings": [],
+        "interval_minutes": interval_minutes,
+    }
+
+
 def aggregate_segment_points(points, minutes=5):
     buckets = []
     current = None
@@ -509,6 +649,19 @@ def aggregate_chart(chart, minutes=5):
 def build_stock_card(token, name, code, market):
     quote = quote_card(token, code)
     chart = aggregate_chart(fetch_intraday_chart(token, code), minutes=5)
+    return {
+        "name": name,
+        "market": market,
+        "price": quote["price"],
+        "diff": quote["diff"],
+        "pct": quote["pct"],
+        "chart": chart,
+    }
+
+
+def build_us_stock_card(token, name, code, market, excd):
+    quote = us_quote_card(token, excd, code, digits=2)
+    chart = fetch_us_intraday_chart(token, excd, code, interval_minutes=5)
     return {
         "name": name,
         "market": market,
@@ -741,21 +894,40 @@ def build_summary_card(token, item):
 
 
 def build_stock_entry(token, item):
+    if current_market() == "us":
+        excd = item.get("excd", "NAS")
+        return build_us_stock_card(token, item["name"], item["code"], item.get("market", excd), excd)
     return build_stock_card(token, item["name"], item["code"], item["market"])
 
 
-def main():
-    token = get_token()
-    watchlist = load_watchlist()
-    result = {
+def dashboard_meta(market):
+    if market == "us":
+        return {
+            "title": "US Market Dashboard",
+            "subtitle": "KIS US intraday · macro snapshot + watchlist flow",
+        }
+    return {
         "title": "KR Market Dashboard",
         "subtitle": "KIS intraday · macro snapshot + stock session flow",
+    }
+
+
+def main():
+    market = current_market()
+    token = get_token()
+    watchlist = load_watchlist(market)
+    meta = dashboard_meta(market)
+    result = {
+        "market": market,
+        "title": meta["title"],
+        "subtitle": meta["subtitle"],
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "summary_cards": [build_summary_card(token, item) for item in SUMMARY_ITEMS],
+        "summary_cards": [build_summary_card(token, item) for item in SUMMARY_ITEMS_BY_MARKET[market]],
         "stock_cards": [build_stock_entry(token, item) for item in watchlist],
     }
-    OUT.write_text(json.dumps(result, ensure_ascii=False, indent=2))
-    print(str(OUT))
+    out_path = output_json_path()
+    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    print(str(out_path))
 
 
 if __name__ == "__main__":

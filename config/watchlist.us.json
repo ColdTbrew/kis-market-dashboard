@@ -1,0 +1,30 @@
+[
+  {
+    "type": "stock",
+    "name": "Apple",
+    "code": "AAPL",
+    "market": "NASDAQ",
+    "excd": "NAS"
+  },
+  {
+    "type": "stock",
+    "name": "Microsoft",
+    "code": "MSFT",
+    "market": "NASDAQ",
+    "excd": "NAS"
+  },
+  {
+    "type": "stock",
+    "name": "NVIDIA",
+    "code": "NVDA",
+    "market": "NASDAQ",
+    "excd": "NAS"
+  },
+  {
+    "type": "stock",
+    "name": "Tesla",
+    "code": "TSLA",
+    "market": "NASDAQ",
+    "excd": "NAS"
+  }
+]
