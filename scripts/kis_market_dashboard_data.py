@@ -26,7 +26,7 @@ SUMMARY_ITEMS = [
     {"type": "kr_index", "name": "KOSPI", "code": "0001", "market": "KOSPI"},
     {"type": "kr_index", "name": "KOSDAQ", "code": "1001", "market": "KOSDAQ"},
     {"type": "overseas_index", "name": "NASDAQ", "code": "NDX", "market": "NASDAQ-100", "label": "전일 종가", "price_digits": 2},
-    {"type": "fx", "name": "USD/KRW", "code": "XFX@KRW", "market": "FX", "label": "환율", "price_digits": 2},
+    {"type": "fx", "name": "USD/KRW", "market": "FX", "label": "환율", "price_digits": 2, "anchor_excd": "NAS", "anchor_symb": "AAPL"},
     {"type": "commodity", "name": "WTI", "code": "CL", "market": "NYMEX", "label": "유가", "price_digits": 2},
 ]
 
@@ -544,6 +544,31 @@ def overseas_index_quote_card(token, code, digits=2):
     }
 
 
+def fx_quote_card_from_price_detail(token, excd, symb, digits=2):
+    data = kis_get(
+        token,
+        "/uapi/overseas-price/v1/quotations/price-detail",
+        {
+            "AUTH": "",
+            "EXCD": excd,
+            "SYMB": symb,
+        },
+        "HHDFS76200200",
+    )
+    out = data.get("output", {})
+    rate = parse_number(out.get("t_rate"))
+    previous = parse_number(out.get("p_rate"))
+    diff = None if previous is None or rate is None else rate - previous
+    sign_code = "2" if diff and diff > 0 else "5" if diff and diff < 0 else "3"
+    pct = None if previous in (None, 0) or rate is None else (diff / previous) * 100.0
+    return {
+        "price": format_decimal(rate, digits=digits),
+        "diff": "-" if diff is None else format_pct_or_diff_decimal(diff, sign_code, digits=digits),
+        "pct": "-" if pct is None else format_pct(pct, sign_code),
+        "raw_price": rate or 0.0,
+    }
+
+
 def unavailable_summary_card(item, detail):
     return {
         "name": item["name"],
@@ -582,7 +607,22 @@ def build_summary_card(token, item):
         }
 
     if item["type"] == "fx":
-        return unavailable_summary_card(item, "KIS 코드 확인중")
+        quote = fx_quote_card_from_price_detail(
+            token,
+            item.get("anchor_excd", "NAS"),
+            item.get("anchor_symb", "AAPL"),
+            digits=item.get("price_digits", 2),
+        )
+        if quote["raw_price"] == 0:
+            return unavailable_summary_card(item, "KIS 환율 없음")
+        return {
+            "name": item["name"],
+            "market": item["market"],
+            "label": item.get("label", ""),
+            "price": quote["price"],
+            "diff": quote["diff"],
+            "pct": quote["pct"],
+        }
 
     if item["type"] == "commodity":
         return unavailable_summary_card(item, "계좌 권한 필요")
