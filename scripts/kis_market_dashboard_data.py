@@ -544,6 +544,30 @@ def overseas_index_quote_card(token, code, digits=2):
     }
 
 
+def commodity_quote_card(token, code, digits=2):
+    data = kis_get(
+        token,
+        "/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
+        {
+            "FID_COND_MRKT_DIV_CODE": "N",
+            "FID_INPUT_ISCD": code,
+            "FID_INPUT_DATE_1": (datetime.now() - timedelta(days=30)).strftime("%Y%m%d"),
+            "FID_INPUT_DATE_2": datetime.now().strftime("%Y%m%d"),
+            "FID_PERIOD_DIV_CODE": "D",
+        },
+        "FHKST03030100",
+    )
+    out = data.get("output1", {})
+    raw_price = parse_number(out.get("ovrs_nmix_prpr"))
+    sign_code = out.get("prdy_vrss_sign")
+    return {
+        "price": format_decimal(raw_price, digits=digits),
+        "diff": format_pct_or_diff_decimal(out.get("ovrs_nmix_prdy_vrss"), sign_code, digits=digits),
+        "pct": format_pct(out.get("prdy_ctrt"), sign_code),
+        "raw_price": raw_price or 0.0,
+    }
+
+
 def fx_quote_card_from_price_detail(token, excd, symb, digits=2):
     data = kis_get(
         token,
@@ -625,7 +649,17 @@ def build_summary_card(token, item):
         }
 
     if item["type"] == "commodity":
-        return unavailable_summary_card(item, "계좌 권한 필요")
+        quote = commodity_quote_card(token, item["code"], digits=item.get("price_digits", 2))
+        if quote["raw_price"] == 0:
+            return unavailable_summary_card(item, "KIS 시세 없음")
+        return {
+            "name": item["name"],
+            "market": item["market"],
+            "label": item.get("label", ""),
+            "price": quote["price"],
+            "diff": quote["diff"],
+            "pct": quote["pct"],
+        }
 
     return {
         "name": item["name"],
