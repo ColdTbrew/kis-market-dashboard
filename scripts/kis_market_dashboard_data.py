@@ -22,6 +22,7 @@ WATCHLIST = [
     {"type": "stock", "name": "Samsung Elec.", "code": "005930", "market": "005930"},
     {"type": "stock", "name": "SK Hynix", "code": "000660", "market": "000660"},
     {"type": "stock", "name": "SK Telecom", "code": "017670", "market": "017670"},
+    {"type": "stock", "name": "Hyundai Motor", "code": "005380", "market": "005380"},
 ]
 
 SUMMARY_ITEMS = [
