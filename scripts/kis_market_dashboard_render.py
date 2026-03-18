@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import json
-import math
 import os
 from pathlib import Path
 
@@ -10,10 +9,11 @@ ROOT = Path(__file__).resolve().parent.parent
 JSON_PATH = Path(os.getenv("KIS_DASHBOARD_JSON", ROOT / "tmp" / "kis_market_dashboard.json"))
 PNG_PATH = Path(os.getenv("KIS_DASHBOARD_PNG", ROOT / "tmp" / "kis_market_dashboard.png"))
 
-WIDTH = 1200
+WIDTH = 1320
 PADDING = 28
 GAP = 22
-CARD_HEIGHT = 470
+CARD_HEIGHT = 480
+CARD_HEIGHT_WIDE = 520
 HEADER_HEIGHT = 86
 BOTTOM_PADDING = 28
 COLS = 2
@@ -67,18 +67,31 @@ def draw_line(draw, points, fill, width):
         draw.line(points, fill=fill, width=width, joint="curve")
 
 
-def card_box(index):
-    row = index // COLS
-    col = index % COLS
+def card_layout(cards):
+    layouts = []
     card_width = (WIDTH - (PADDING * 2) - GAP) // COLS
-    x0 = PADDING + col * (card_width + GAP)
-    y0 = PADDING + HEADER_HEIGHT + row * (CARD_HEIGHT + GAP)
-    return x0, y0, x0 + card_width, y0 + CARD_HEIGHT
+    y = PADDING + HEADER_HEIGHT
+
+    if len(cards) == 3:
+        layouts.append((PADDING, y, PADDING + card_width, y + CARD_HEIGHT))
+        layouts.append((PADDING + card_width + GAP, y, WIDTH - PADDING, y + CARD_HEIGHT))
+        y += CARD_HEIGHT + GAP
+        layouts.append((PADDING, y, WIDTH - PADDING, y + CARD_HEIGHT_WIDE))
+        return layouts
+
+    for index in range(len(cards)):
+        row = index // COLS
+        col = index % COLS
+        x0 = PADDING + col * (card_width + GAP)
+        y0 = PADDING + HEADER_HEIGHT + row * (CARD_HEIGHT + GAP)
+        layouts.append((x0, y0, x0 + card_width, y0 + CARD_HEIGHT))
+    return layouts
 
 
 def chart_bounds(box):
     x0, y0, x1, y1 = box
-    return x0 + 16, y0 + 156, x1 - 16, y0 + 352
+    chart_bottom = y1 - 66
+    return x0 + 16, y0 + 152, x1 - 16, chart_bottom
 
 
 def flatten_segments(segments):
@@ -120,7 +133,7 @@ def draw_chart(draw, box, chart):
     min_price = min(prices)
     max_price = max(prices)
     price_span = max(1, max_price - min_price)
-    plot_x0, plot_y0, plot_x1, plot_y1 = inner[0] + 16, inner[1] + 14, inner[2] - 16, inner[3] - 30
+    plot_x0, plot_y0, plot_x1, plot_y1 = inner[0] + 18, inner[1] + 18, inner[2] - 18, inner[3] - 24
     plot_height = plot_y1 - plot_y0
     plot_width = plot_x1 - plot_x0
 
@@ -133,7 +146,7 @@ def draw_chart(draw, box, chart):
     minute_span = max(1, max_minute - min_minute)
     dividers = []
     session_labels = []
-    candle_width = max(4, int(plot_width / max(70, minute_span / 5)))
+    candle_width = max(5, int(plot_width / max(84, minute_span / 5)))
 
     for segment in segments:
         seg_points = segment["points"]
@@ -201,6 +214,7 @@ def draw_chart(draw, box, chart):
     axis_marks = [
         ("08:00", "080000"),
         ("09:00", "090000"),
+        ("12:00", "120000"),
         ("15:30", "153000"),
         ("19:59", "195900"),
     ]
@@ -245,8 +259,9 @@ def draw_card(draw, box, card):
 def main():
     data = json.loads(JSON_PATH.read_text())
     cards = data.get("cards", [])
-    rows = max(1, math.ceil(len(cards) / COLS))
-    height = PADDING + HEADER_HEIGHT + rows * CARD_HEIGHT + max(0, rows - 1) * GAP + BOTTOM_PADDING
+    layouts = card_layout(cards)
+    content_bottom = max((box[3] for box in layouts), default=PADDING + HEADER_HEIGHT + CARD_HEIGHT)
+    height = content_bottom + BOTTOM_PADDING
 
     image = Image.new("RGBA", (WIDTH, height), "#f5f8fb")
     draw = ImageDraw.Draw(image)
@@ -267,7 +282,7 @@ def main():
     draw_text(draw, (PADDING, PADDING + 50), data.get("subtitle", "KIS intraday"), FONT_SUB, "#6f8295")
 
     for idx, card in enumerate(cards):
-        draw_card(draw, card_box(idx), card)
+        draw_card(draw, layouts[idx], card)
 
     PNG_PATH.parent.mkdir(parents=True, exist_ok=True)
     image.save(PNG_PATH)
