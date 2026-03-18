@@ -84,12 +84,19 @@ def cmd_generate(args):
     previous_watchlist = os.environ.get("KIS_DASHBOARD_WATCHLIST")
     previous_interval = os.environ.get("KIS_DASHBOARD_INTERVAL_MINUTES")
     previous_candle_width = os.environ.get("KIS_DASHBOARD_CANDLE_WIDTH_SCALE")
+    previous_width = os.environ.get("KIS_DASHBOARD_WIDTH_PX")
+    previous_height = os.environ.get("KIS_DASHBOARD_HEIGHT_PX")
+    previous_render_scale = os.environ.get("KIS_DASHBOARD_RENDER_SCALE")
     try:
         os.environ["KIS_DASHBOARD_JSON"] = str(json_out)
         os.environ["KIS_DASHBOARD_MARKET"] = market
         os.environ["KIS_DASHBOARD_WATCHLIST"] = str(watchlist_path)
         os.environ["KIS_DASHBOARD_INTERVAL_MINUTES"] = str(args.interval_minutes)
         os.environ["KIS_DASHBOARD_CANDLE_WIDTH_SCALE"] = str(args.candle_width_scale)
+        os.environ["KIS_DASHBOARD_WIDTH_PX"] = str(args.width_px)
+        os.environ["KIS_DASHBOARD_RENDER_SCALE"] = str(args.render_scale)
+        if args.height_px:
+            os.environ["KIS_DASHBOARD_HEIGHT_PX"] = str(args.height_px)
         if args.render:
             os.environ["KIS_DASHBOARD_PNG"] = str(png_out)
 
@@ -155,6 +162,21 @@ def cmd_generate(args):
             os.environ.pop("KIS_DASHBOARD_CANDLE_WIDTH_SCALE", None)
         else:
             os.environ["KIS_DASHBOARD_CANDLE_WIDTH_SCALE"] = previous_candle_width
+
+        if previous_width is None:
+            os.environ.pop("KIS_DASHBOARD_WIDTH_PX", None)
+        else:
+            os.environ["KIS_DASHBOARD_WIDTH_PX"] = previous_width
+
+        if previous_height is None:
+            os.environ.pop("KIS_DASHBOARD_HEIGHT_PX", None)
+        else:
+            os.environ["KIS_DASHBOARD_HEIGHT_PX"] = previous_height
+
+        if previous_render_scale is None:
+            os.environ.pop("KIS_DASHBOARD_RENDER_SCALE", None)
+        else:
+            os.environ["KIS_DASHBOARD_RENDER_SCALE"] = previous_render_scale
 
 
 def cmd_watchlist_list(args):
@@ -229,6 +251,23 @@ def build_parser():
     generate.add_argument("--out-dir", help="Directory for generated files. Default: ./tmp")
     generate.add_argument("--json-out", help="Explicit JSON output path. Overrides --out-dir.")
     generate.add_argument("--png-out", help="Explicit PNG output path. Overrides --out-dir.")
+    generate.add_argument(
+        "--width-px",
+        type=int,
+        default=1080,
+        help="Final PNG width in pixels. Default: 1080",
+    )
+    generate.add_argument(
+        "--height-px",
+        type=int,
+        help="Optional final PNG height in pixels. If omitted, content height is used.",
+    )
+    generate.add_argument(
+        "--render-scale",
+        type=float,
+        default=2.0,
+        help="Internal supersampling scale for sharper output. Default: 2.0",
+    )
     generate.add_argument(
         "--interval-minutes",
         type=int,
