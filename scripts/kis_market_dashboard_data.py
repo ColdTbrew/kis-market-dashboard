@@ -16,9 +16,11 @@ CANO = os.getenv("KIS_CANO", "")
 ACNT_PRDT_CD = os.getenv("KIS_ACNT_PRDT_CD", "")
 OUT = Path(os.getenv("KIS_DASHBOARD_JSON", "./tmp/kis_market_dashboard.json"))
 TOKEN_CACHE = OUT.parent / ".kis_access_token.json"
+ROOT = Path(__file__).resolve().parent.parent
+WATCHLIST_PATH = Path(os.getenv("KIS_DASHBOARD_WATCHLIST", ROOT / "config" / "watchlist.json"))
 OUT.parent.mkdir(parents=True, exist_ok=True)
 
-WATCHLIST = [
+DEFAULT_WATCHLIST = [
     {"type": "stock", "name": "Samsung Elec.", "code": "005930", "market": "005930"},
     {"type": "stock", "name": "SK Hynix", "code": "000660", "market": "000660"},
     {"type": "stock", "name": "SK Telecom", "code": "017670", "market": "017670"},
@@ -69,6 +71,19 @@ def http_json(url, method="GET", headers=None, payload=None):
         except Exception:
             detail = {"message": body}
         raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+
+
+def load_watchlist():
+    if WATCHLIST_PATH.exists():
+        try:
+            watchlist = json.loads(WATCHLIST_PATH.read_text())
+            if isinstance(watchlist, list) and watchlist:
+                return watchlist
+        except Exception:
+            pass
+    WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    WATCHLIST_PATH.write_text(json.dumps(DEFAULT_WATCHLIST, ensure_ascii=False, indent=2))
+    return DEFAULT_WATCHLIST
 
 
 def read_cached_token():
@@ -731,12 +746,13 @@ def build_stock_entry(token, item):
 
 def main():
     token = get_token()
+    watchlist = load_watchlist()
     result = {
         "title": "KR Market Dashboard",
         "subtitle": "KIS intraday · macro snapshot + stock session flow",
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "summary_cards": [build_summary_card(token, item) for item in SUMMARY_ITEMS],
-        "stock_cards": [build_stock_entry(token, item) for item in WATCHLIST],
+        "stock_cards": [build_stock_entry(token, item) for item in watchlist],
     }
     OUT.write_text(json.dumps(result, ensure_ascii=False, indent=2))
     print(str(OUT))

@@ -25,6 +25,7 @@
 - Samsung Electronics (005930)
 - SK Hynix (000660)
 - SK Telecom (017670)
+- Hyundai Motor (005380)
 
 ## 환경 준비
 ```bash
@@ -48,6 +49,24 @@ export OPENCLAW_ACCOUNT="default"
 ## 실행
 ```bash
 bash scripts/kis_market_dashboard_image.sh
+```
+
+## Watchlist CLI
+현재 종목 리스트는 `config/watchlist.json`에서 관리합니다.
+
+조회:
+```bash
+bash scripts/kis_market_dashboard_watchlist.sh list
+```
+
+추가:
+```bash
+bash scripts/kis_market_dashboard_watchlist.sh add 000270 Kia
+```
+
+제거:
+```bash
+bash scripts/kis_market_dashboard_watchlist.sh remove 000270
 ```
 
 - 기본적으로 `.venv/bin/python`을 사용합니다.
