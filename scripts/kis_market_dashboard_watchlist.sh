@@ -10,4 +10,4 @@ if [ ! -x "$PYTHON_BIN" ]; then
   exit 1
 fi
 
-"$PYTHON_BIN" "$ROOT/scripts/kis_market_dashboard_watchlist.py" "$@"
+"$PYTHON_BIN" "$ROOT/kis_market_dashboard.py" watchlist "$@"

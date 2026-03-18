@@ -48,7 +48,7 @@ export OPENCLAW_ACCOUNT="default"
 
 ## 실행
 ```bash
-bash scripts/kis_market_dashboard_image.sh
+uv run python kis_market_dashboard.py generate
 ```
 
 ## Watchlist CLI
@@ -56,17 +56,24 @@ bash scripts/kis_market_dashboard_image.sh
 
 조회:
 ```bash
-bash scripts/kis_market_dashboard_watchlist.sh list
+uv run python kis_market_dashboard.py watchlist list
 ```
 
 추가:
 ```bash
-bash scripts/kis_market_dashboard_watchlist.sh add 000270 Kia
+uv run python kis_market_dashboard.py watchlist add 000270 Kia
 ```
 
 제거:
 ```bash
-bash scripts/kis_market_dashboard_watchlist.sh remove 000270
+uv run python kis_market_dashboard.py watchlist remove 000270
+```
+
+도움말:
+```bash
+uv run python kis_market_dashboard.py --help
+uv run python kis_market_dashboard.py generate --help
+uv run python kis_market_dashboard.py watchlist --help
 ```
 
 - 기본적으로 `.venv/bin/python`을 사용합니다.
