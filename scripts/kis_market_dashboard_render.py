@@ -144,11 +144,27 @@ def draw_chart(draw, box, chart):
 
     for ratio in (0.0, 0.5, 1.0):
         y = plot_y0 + ratio * plot_height
-        draw.line((plot_x0, y, plot_x1, y), fill="#e5edf5", width=1)
+        draw.line((plot_x0, y, plot_x1, y), fill="#dfe8f2", width=1)
         price_value = max_price - (price_span * ratio)
         label = format_axis_value(price_value)
         label_w, label_h = measure(FONT_AXIS, label)
-        draw_text(draw, (plot_x1 - label_w, max(plot_y0, y - label_h - 2)), label, FONT_AXIS, "#9aabbb")
+        pill_pad_x = 8
+        pill_pad_y = 4
+        text_x = plot_x1 - label_w - 8
+        text_y = max(plot_y0 + 2, y - label_h - 2)
+        rounded(
+            draw,
+            (
+                text_x - pill_pad_x,
+                text_y - pill_pad_y,
+                text_x + label_w + pill_pad_x,
+                text_y + label_h + pill_pad_y,
+            ),
+            10,
+            fill="#ffffff",
+            outline="#d6e1ec",
+        )
+        draw_text(draw, (text_x, text_y), label, FONT_AXIS, "#5f7286")
 
     min_minute = min(hhmmss_to_minutes(point["time_raw"]) for point in all_points)
     max_minute = max(hhmmss_to_minutes(point["time_raw"]) for point in all_points)
