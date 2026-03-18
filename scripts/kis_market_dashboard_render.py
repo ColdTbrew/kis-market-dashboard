@@ -181,7 +181,7 @@ def build_axis_marks(all_points):
 
 
 def candle_direction(point, previous_close, market):
-    if str(market or "").lower() == "us" and previous_close is not None:
+    if previous_close is not None:
         if point["close"] > previous_close:
             return "up"
         if point["close"] < previous_close:
