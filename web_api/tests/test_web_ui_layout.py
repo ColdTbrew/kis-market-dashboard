@@ -51,3 +51,20 @@ def test_web_ui_has_terminal_chart_layout_hooks() -> None:
     assert ".control-rail" in css
     assert ".market-strip" in css
     assert 'id="app"' in html
+
+
+def test_web_ui_uses_flat_terminal_surfaces() -> None:
+    css = (Path(__file__).resolve().parents[2] / "web_ui" / "styles.css").read_text(encoding="utf-8")
+
+    body = extract_block(css, "body")
+    assert "radial-gradient" not in body
+    assert "linear-gradient" not in body
+
+    hero_panel = extract_block(css, ".hero-chart-panel")
+    assert "gradient" not in hero_panel
+
+    chart_frame = extract_block(css, ".chart-frame")
+    assert "gradient" not in chart_frame
+
+    button_primary = extract_block(css, ".button.primary")
+    assert "gradient" not in button_primary
