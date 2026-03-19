@@ -267,7 +267,7 @@ def run_generate(repo_root: Path, artifacts_root: Path, payload: GenerateRequest
         "media_type": "image/webp" if payload.format == "webp" else "image/png",
         "preview_url": f"/api/artifacts/{artifact_id}/download",
         "summary_count": len(data.get("summary_cards", [])),
-        "stock_count": len(data.get("stocks", [])),
+        "stock_count": len(data.get("stock_cards", data.get("stocks", []))),
     }
     (artifact_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     return metadata

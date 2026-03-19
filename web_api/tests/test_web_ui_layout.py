@@ -20,13 +20,13 @@ def test_generate_panel_has_overflow_guards() -> None:
     css = Path(__file__).resolve().parents[2] / "web_ui" / "styles.css"
     content = css.read_text(encoding="utf-8")
 
-    dashboard = extract_block(content, ".dashboard")
-    assert "min-width: 0;" in dashboard
+    terminal_shell = extract_block(content, ".terminal-shell")
+    assert "min-width: 0;" in terminal_shell
 
     stack = extract_block(content, ".stack")
     assert "min-width: 0;" in stack
 
-    panel = extract_block(content, ".panel")
+    panel = extract_block(content, ".chart-frame")
     assert "overflow: hidden;" in panel
 
     field = extract_block(content, ".field")
@@ -38,4 +38,16 @@ def test_generate_panel_has_overflow_guards() -> None:
 
 def test_web_ui_loads_lightweight_charts() -> None:
     html = (Path(__file__).resolve().parents[2] / "web_ui" / "index.html").read_text(encoding="utf-8")
-    assert "lightweight-charts.standalone.production.js" in html
+    assert "echarts.min.js" in html
+    assert "lightweight-charts" not in html
+
+
+def test_web_ui_has_terminal_chart_layout_hooks() -> None:
+    css = (Path(__file__).resolve().parents[2] / "web_ui" / "styles.css").read_text(encoding="utf-8")
+    html = (Path(__file__).resolve().parents[2] / "web_ui" / "index.html").read_text(encoding="utf-8")
+
+    assert ".terminal-shell" in css
+    assert ".hero-chart-panel" in css
+    assert ".control-rail" in css
+    assert ".market-strip" in css
+    assert 'id="app"' in html
