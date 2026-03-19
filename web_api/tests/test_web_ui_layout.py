@@ -95,3 +95,19 @@ def test_web_ui_compacts_side_rail_typography() -> None:
 
     module_head = extract_block(css, ".module-head h2,\n.module-head h3")
     assert "font-size: 22px;" in module_head
+
+
+def test_web_ui_reduces_overall_corner_radius() -> None:
+    css = (Path(__file__).resolve().parents[2] / "web_ui" / "styles.css").read_text(encoding="utf-8")
+
+    status_chip = extract_block(css, ".status-chip")
+    assert "border-radius: 14px;" in status_chip
+
+    side_panel = extract_block(css, ".side-panel")
+    assert "border-radius: 16px;" in side_panel
+
+    chart_frame = extract_block(css, ".chart-frame")
+    assert "border-radius: 14px;" in chart_frame
+
+    button = extract_block(css, ".button")
+    assert "border-radius: 12px;" in button
