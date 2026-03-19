@@ -111,3 +111,10 @@ def test_web_ui_reduces_overall_corner_radius() -> None:
 
     button = extract_block(css, ".button")
     assert "border-radius: 12px;" in button
+
+
+def test_chart_time_axis_is_sparse() -> None:
+    script = (Path(__file__).resolve().parents[2] / "web_ui" / "app.js").read_text(encoding="utf-8")
+    assert "hideOverlap: true" in script
+    assert "formatter: (_, index)" in script
+    assert "return index % step === 0 ? categories[index] : \"\";" in script

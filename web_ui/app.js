@@ -664,7 +664,14 @@ function buildChartOption(rows, segments) {
         data: categories,
         boundaryGap: true,
         axisLine: { lineStyle: { color: "rgba(149,163,184,0.18)" } },
-        axisLabel: { color: "#95a3b8", interval: autoInterval(categories.length) },
+        axisLabel: {
+          color: "#95a3b8",
+          hideOverlap: true,
+          formatter: (_, index) => {
+            const step = xAxisStep(categories.length);
+            return index % step === 0 ? categories[index] : "";
+          },
+        },
         splitLine: { show: false },
         min: "dataMin",
         max: "dataMax",
@@ -739,16 +746,26 @@ function buildChartOption(rows, segments) {
 }
 
 function autoInterval(length) {
-  if (length > 80) {
-    return 7;
+  return xAxisStep(length) - 1;
+}
+
+function xAxisStep(length) {
+  if (length > 90) {
+    return 10;
+  }
+  if (length > 70) {
+    return 8;
   }
   if (length > 50) {
-    return 4;
+    return 6;
   }
   if (length > 30) {
+    return 4;
+  }
+  if (length > 18) {
     return 2;
   }
-  return 0;
+  return 1;
 }
 
 function diffClass(diff) {
