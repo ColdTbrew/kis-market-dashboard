@@ -20,6 +20,10 @@
 - `kis_market_dashboard.py`
   - 단일 CLI 엔트리포인트
   - 데이터 생성 / PNG 렌더 / 전송 / watchlist 관리
+- `web_api/`
+  - 별도 웹 대시보드 앱
+  - 웹 백엔드가 `.env`를 런타임에 동적으로 로드하고 KIS를 직접 조회
+  - CLI/artifact JSON 경로를 거치지 않는 live dashboard API 제공
 - `pyproject.toml`
   - `uv` 기반 Python 의존성 관리
 
@@ -42,12 +46,14 @@ uv sync
 
 ## 필요 환경변수
 ```bash
-export KIS_APPKEY="..."
-export KIS_APPSECRET="..."
+export KIS_APP_KEY="..."      # or KIS_APPKEY
+export KIS_APP_SECRET="..."   # or KIS_APPSECRET
 export KIS_BASE_URL="https://openapi.koreainvestment.com:9443"  # optional
 # export KIS_BASE_URL="http://210.107.75.78:9443"  # KIS dev/sandbox example
 # export KIS_ALLOW_UNSAFE_BASE_URL="1"  # only for local development against a trusted non-default endpoint
-export ALPHAVANTAGE_API_KEY="..."  # WTI summary card
+export KIS_CANO="..."               # optional, used for richer FX data paths
+export KIS_ACNT_PRDT_CD="..."       # optional, used for richer FX data paths
+export apiKey="..."                 # or ALPHAVANTAGE_API_KEY, for WTI summary card
 ```
 
 OpenClaw로 바로 보내려면:
@@ -62,6 +68,24 @@ export OPENCLAW_ACCOUNT="default"
 uv run python kis_market_dashboard.py generate
 uv run python kis_market_dashboard.py generate --market us
 ```
+
+## 웹 대시보드
+웹 대시보드는 CLI와 별도로 동작합니다. 웹 요청 시점에 백엔드가 직접 KIS를 조회합니다.
+
+실행:
+```bash
+cd web_api
+uv run uvicorn app.main:create_app --factory --reload
+```
+
+필수 웹 환경변수:
+```bash
+export KIS_WEB_DASHBOARD_PASSWORD="..."
+export KIS_WEB_DASHBOARD_SESSION_SECRET="..."
+export KIS_WEB_DASHBOARD_INSECURE_HTTP=1  # local http cookie testing
+```
+
+웹 데이터용 런타임 env는 repo root `.env`에서 동적으로 로드합니다.
 
 ## 대시보드 예시
 

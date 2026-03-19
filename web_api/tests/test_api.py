@@ -12,6 +12,59 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.main import create_app
 
 
+class FakeDashboardService:
+    def build_dashboard(self, market: str, interval_minutes: int) -> dict[str, object]:
+        return {
+            "market": market,
+            "title": f"{market.upper()} Market Dashboard",
+            "subtitle": "Live dashboard payload",
+            "generated_at": "2026-03-19T10:00:00",
+            "interval_minutes": interval_minutes,
+            "summary_cards": [
+                {
+                    "name": "KOSPI",
+                    "market": "KOSPI",
+                    "label": "",
+                    "price": "2,700.00",
+                    "diff": "+12.00",
+                    "pct": "+0.45%",
+                }
+            ],
+            "stock_cards": [
+                {
+                    "name": "Samsung Elec.",
+                    "market": "005930",
+                    "price": "209,500",
+                    "diff": "+15,600",
+                    "pct": "+8.0%",
+                    "chart": {
+                        "interval_minutes": interval_minutes,
+                        "segments": [
+                            {
+                                "session": "KRX",
+                                "color": "#f97316",
+                                "points": [
+                                    {
+                                        "time": "09:00",
+                                        "time_raw": "090000",
+                                        "price": 209500,
+                                        "open": 208000,
+                                        "high": 210000,
+                                        "low": 207500,
+                                        "close": 209500,
+                                        "volume": 1200000,
+                                        "session": "KRX",
+                                    }
+                                ],
+                            }
+                        ],
+                        "warnings": [],
+                    },
+                }
+            ],
+        }
+
+
 @pytest.fixture()
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "repo"
@@ -19,7 +72,6 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (root / "config").mkdir()
     (root / "tmp").mkdir()
     (root / "web_ui").mkdir()
-    (root / "kis_market_dashboard.py").write_text("print('stub')")
     (root / "web_ui" / "index.html").write_text("<html><body>KIS Command Center</body></html>")
     (root / "web_ui" / "styles.css").write_text("body{}")
     (root / "web_ui" / "app.js").write_text("console.log('ok');")
@@ -31,14 +83,13 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture()
 def client(workspace: Path) -> TestClient:
-    app = create_app(root_dir=workspace)
-    return TestClient(app)
+    return TestClient(create_app(root_dir=workspace, dashboard_service=FakeDashboardService()))
 
 
-def login(client: TestClient) -> None:
+def login(client: TestClient) -> str:
     response = client.post("/api/login", json={"password": "secret"})
     assert response.status_code == 200
-    assert response.json()["csrf_token"]
+    return response.json()["csrf_token"]
 
 
 def test_login_and_session(client: TestClient) -> None:
@@ -57,8 +108,7 @@ def test_login_and_session(client: TestClient) -> None:
 
 
 def test_watchlist_roundtrip(client: TestClient, workspace: Path) -> None:
-    login_response = client.post("/api/login", json={"password": "secret"})
-    csrf_token = login_response.json()["csrf_token"]
+    csrf_token = login(client)
 
     add_response = client.post(
         "/api/watchlist",
@@ -77,70 +127,23 @@ def test_watchlist_roundtrip(client: TestClient, workspace: Path) -> None:
     assert list_response.json()["items"][0]["code"] == "005930"
 
     delete_response = client.delete(
-        "/api/watchlist/005930", params={"market": "kr"}, headers={"X-CSRF-Token": csrf_token}
+        "/api/watchlist/005930",
+        params={"market": "kr"},
+        headers={"X-CSRF-Token": csrf_token},
     )
     assert delete_response.status_code == 200
     assert delete_response.json()["items"] == []
 
 
-def test_generate_creates_artifact_metadata(
-    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    login_response = client.post("/api/login", json={"password": "secret"})
-    csrf_token = login_response.json()["csrf_token"]
-
-    generated_json = {"market": "kr", "summary_cards": [], "stocks": []}
-
-    def fake_run(command: list[str], cwd: Path, check: bool, capture_output: bool, text: bool):
-        assert cwd == workspace
-        assert command[:4] == ["uv", "run", "python", "kis_market_dashboard.py"]
-        json_out = Path(command[command.index("--json-out") + 1])
-        image_out = Path(command[command.index("--image-out") + 1])
-        json_out.parent.mkdir(parents=True, exist_ok=True)
-        json_out.write_text(json.dumps(generated_json))
-        image_out.write_bytes(b"img")
-
-        class Result:
-            stdout = str(image_out)
-            stderr = ""
-
-        return Result()
-
-    monkeypatch.setattr("app.main.subprocess.run", fake_run)
-
-    response = client.post(
-        "/api/generate",
-        json={
-            "market": "kr",
-            "format": "webp",
-            "interval_minutes": 15,
-            "candle_width_scale": 0.8,
-            "width_px": 1440,
-            "render_scale": 2.5,
-        },
-        headers={"X-CSRF-Token": csrf_token},
-    )
+def test_dashboard_returns_live_payload(client: TestClient) -> None:
+    login(client)
+    response = client.get("/api/dashboard", params={"market": "kr", "interval_minutes": 15})
     assert response.status_code == 200
     payload = response.json()
-    assert payload["artifact"]["market"] == "kr"
-    assert payload["artifact"]["format"] == "webp"
-    artifact_dir = workspace / "tmp" / "web-artifacts" / payload["artifact"]["id"]
-    assert (artifact_dir / "metadata.json").exists()
-    assert (artifact_dir / "dashboard.json").exists()
-    assert (artifact_dir / "dashboard.webp").exists()
-
-    detail_response = client.get(f"/api/artifacts/{payload['artifact']['id']}")
-    assert detail_response.status_code == 200
-    detail_payload = detail_response.json()
-    assert detail_payload["artifact"]["market"] == "kr"
-    assert detail_payload["dashboard"]["market"] == "kr"
-    assert detail_payload["dashboard"]["stocks"] == []
-
-
-def test_index_serves_html(client: TestClient) -> None:
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "KIS Command Center" in response.text
+    assert payload["market"] == "kr"
+    assert payload["interval_minutes"] == 15
+    assert payload["summary_cards"][0]["name"] == "KOSPI"
+    assert payload["stock_cards"][0]["chart"]["interval_minutes"] == 15
 
 
 def test_missing_csrf_is_rejected(client: TestClient) -> None:
@@ -150,3 +153,9 @@ def test_missing_csrf_is_rejected(client: TestClient) -> None:
         json={"market": "kr", "code": "005930", "name": "Samsung Elec.", "market_label": "005930"},
     )
     assert response.status_code == 403
+
+
+def test_index_serves_html(client: TestClient) -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "KIS Command Center" in response.text

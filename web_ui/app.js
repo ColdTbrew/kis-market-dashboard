@@ -1,13 +1,12 @@
 const state = {
   session: false,
   market: "kr",
-  artifacts: [],
   watchlist: [],
-  activeView: "generate",
-  latestArtifact: null,
-  latestDashboard: null,
+  activeView: "dashboard",
+  dashboardData: null,
   selectedStockIndex: 0,
   csrfToken: null,
+  intervalMinutes: 10,
 };
 
 const app = document.querySelector("#app");
@@ -27,7 +26,7 @@ function renderLogin() {
           <div class="module-head">
             <div class="eyebrow">Access Node</div>
             <h2>관리자 로그인</h2>
-            <p>세션 쿠키와 CSRF 토큰으로 웹 대시보드를 잠급니다.</p>
+            <p>웹 백엔드가 직접 KIS를 조회합니다.</p>
           </div>
           <form id="login-form" class="stack">
             <div class="field">
@@ -52,14 +51,13 @@ function renderAuthenticated() {
         <section class="rail-brand">
           <div class="eyebrow">Obsidian Terminal</div>
           <h1>KIS Command Center</h1>
-          <p>Generate dashboards, steer watchlists, and inspect artifacts without touching the existing CLI pipeline.</p>
+          <p>Live KIS dashboard with direct backend market queries and editable watchlists.</p>
         </section>
 
         <section class="rail-cluster">
           <nav class="nav">
-            <button class="${state.activeView === "generate" ? "active" : ""}" data-view="generate">Generate</button>
+            <button class="${state.activeView === "dashboard" ? "active" : ""}" data-view="dashboard">Dashboard</button>
             <button class="${state.activeView === "watchlist" ? "active" : ""}" data-view="watchlist">Watchlist</button>
-            <button class="${state.activeView === "artifacts" ? "active" : ""}" data-view="artifacts">Artifacts</button>
           </nav>
           <div class="rail-status">
             <div class="status-chip">
@@ -71,8 +69,8 @@ function renderAuthenticated() {
               <strong class="mono">${state.market.toUpperCase()}</strong>
             </div>
             <div class="status-chip">
-              <label>Artifacts</label>
-              <strong class="mono">${state.artifacts.length}</strong>
+              <label>Interval</label>
+              <strong class="mono">${state.intervalMinutes}m</strong>
             </div>
             <div class="status-chip">
               <label>Symbols</label>
@@ -82,7 +80,7 @@ function renderAuthenticated() {
         </section>
 
         <section class="rail-scroll">
-          ${renderRailModule()}
+          ${state.activeView === "watchlist" ? renderWatchlistControl() : renderDashboardControl()}
         </section>
       </aside>
 
@@ -95,7 +93,7 @@ function renderAuthenticated() {
           </div>
           <div class="topbar-actions">
             <span class="pill mono">${state.market.toUpperCase()} MODE</span>
-            <span class="pill mono">${state.latestArtifact ? `${state.latestArtifact.interval_minutes}M CANDLES` : "NO ARTIFACT"}</span>
+            <span class="pill mono">${state.dashboardData ? `${state.dashboardData.interval_minutes}M LIVE` : "NO DATA"}</span>
           </div>
         </section>
 
@@ -119,10 +117,10 @@ function renderAuthenticated() {
 
             <section class="side-panel">
               <div class="module-head">
-                <div class="eyebrow">Artifact Log</div>
-                <h3>Recent Runs</h3>
+                <div class="eyebrow">Live Meta</div>
+                <h3>Dashboard State</h3>
               </div>
-              <div class="artifacts">${renderArtifacts()}</div>
+              <div class="artifacts">${renderDashboardMeta()}</div>
             </section>
           </section>
         </section>
@@ -131,66 +129,15 @@ function renderAuthenticated() {
   `;
 }
 
-function renderRailModule() {
-  if (state.activeView === "watchlist") {
-    return `
-      <section class="rail-module">
-        <div class="module-head">
-          <div class="eyebrow">Symbol Control</div>
-          <h2>Watchlist</h2>
-          <p>Market-specific symbol inventory for the CLI dashboard.</p>
-        </div>
-        <form id="watchlist-form" class="stack">
-          <div class="grid">
-            <div class="field">
-              <label>Code</label>
-              <input name="code" required />
-            </div>
-            <div class="field">
-              <label>Name</label>
-              <input name="name" required />
-            </div>
-            <div class="field">
-              <label>Market Label</label>
-              <input name="market_label" />
-            </div>
-            <div class="field ${state.market === "us" ? "" : "hidden"}">
-              <label>EXCD</label>
-              <input name="excd" value="NAS" />
-            </div>
-          </div>
-          <div class="actions">
-            <button class="button primary full" type="submit">Add Symbol</button>
-          </div>
-        </form>
-      </section>
-    `;
-  }
-
-  if (state.activeView === "artifacts") {
-    return `
-      <section class="rail-module">
-        <div class="module-head">
-          <div class="eyebrow">Artifact Controls</div>
-          <h2>Artifacts</h2>
-          <p>Refresh artifact state or tear down the session.</p>
-        </div>
-        <div class="actions">
-          <button class="button primary full" type="button" id="refresh-artifacts">Refresh Artifacts</button>
-          <button class="button secondary full" type="button" id="logout-button">Logout</button>
-        </div>
-      </section>
-    `;
-  }
-
+function renderDashboardControl() {
   return `
     <section class="rail-module">
       <div class="module-head">
         <div class="eyebrow">Control Plane</div>
-        <h2>Generate Dashboard</h2>
-        <p>CLI options are exposed here one-to-one, but the chart stays center stage.</p>
+        <h2>Refresh Dashboard</h2>
+        <p>백엔드가 직접 KIS를 조회해서 live payload를 반환합니다.</p>
       </div>
-      <form id="generate-form" class="stack">
+      <form id="dashboard-form" class="stack">
         <div class="grid">
           <div class="field">
             <label>Market</label>
@@ -200,66 +147,75 @@ function renderRailModule() {
             </select>
           </div>
           <div class="field">
-            <label>Format</label>
-            <select name="format">
-              <option value="png">PNG</option>
-              <option value="webp">WEBP</option>
-            </select>
-          </div>
-          <div class="field">
             <label>Interval Minutes</label>
-            <input name="interval_minutes" type="number" value="${state.latestArtifact?.interval_minutes || 10}" min="1" />
-          </div>
-          <div class="field">
-            <label>Candle Width Scale</label>
-            <input name="candle_width_scale" type="number" step="0.1" value="${state.latestArtifact?.candle_width_scale || 1.0}" min="0.3" max="2" />
-          </div>
-          <div class="field">
-            <label>Width PX</label>
-            <input name="width_px" type="number" value="${state.latestArtifact?.width_px || 1080}" min="480" />
-          </div>
-          <div class="field">
-            <label>Height PX</label>
-            <input name="height_px" type="number" placeholder="auto" min="480" value="${state.latestArtifact?.height_px || ""}" />
-          </div>
-          <div class="field">
-            <label>Render Scale</label>
-            <input name="render_scale" type="number" value="${state.latestArtifact?.render_scale || 2.0}" step="0.1" min="1" />
-          </div>
-          <div class="field">
-            <label>WEBP Quality</label>
-            <input name="webp_quality" type="number" value="${state.latestArtifact?.webp_quality || 90}" min="1" max="100" />
+            <input name="interval_minutes" type="number" value="${state.intervalMinutes}" min="1" />
           </div>
         </div>
         <div class="actions">
-          <button class="button primary full" type="submit">Generate Artifact</button>
-          <button class="button secondary" type="button" id="refresh-artifacts">Refresh</button>
+          <button class="button primary full" type="submit">Refresh Dashboard</button>
+          <button class="button secondary" type="button" id="refresh-dashboard">Refresh</button>
           <button class="button secondary" type="button" id="logout-button">Logout</button>
         </div>
-        <div id="generate-status" class="status"></div>
+        <div id="dashboard-status" class="status"></div>
+      </form>
+    </section>
+  `;
+}
+
+function renderWatchlistControl() {
+  return `
+    <section class="rail-module">
+      <div class="module-head">
+        <div class="eyebrow">Symbol Control</div>
+        <h2>Watchlist</h2>
+        <p>Market-specific symbol inventory for the live dashboard.</p>
+      </div>
+      <form id="watchlist-form" class="stack">
+        <div class="grid">
+          <div class="field">
+            <label>Code</label>
+            <input name="code" required />
+          </div>
+          <div class="field">
+            <label>Name</label>
+            <input name="name" required />
+          </div>
+          <div class="field">
+            <label>Market Label</label>
+            <input name="market_label" />
+          </div>
+          <div class="field ${state.market === "us" ? "" : "hidden"}">
+            <label>EXCD</label>
+            <input name="excd" value="NAS" />
+          </div>
+        </div>
+        <div class="actions">
+          <button class="button primary full" type="submit">Add Symbol</button>
+          <button class="button secondary full" type="button" id="logout-button">Logout</button>
+        </div>
       </form>
     </section>
   `;
 }
 
 function renderTopbarTitle() {
-  if (!state.latestDashboard) {
-    return "No Artifact Loaded";
+  if (!state.dashboardData) {
+    return "No Dashboard Loaded";
   }
-  return state.latestDashboard.title || `${state.market.toUpperCase()} Dashboard`;
+  return state.dashboardData.title || `${state.market.toUpperCase()} Dashboard`;
 }
 
 function renderTopbarSubtitle() {
-  if (!state.latestDashboard) {
-    return "Generate a dashboard artifact to hydrate market strip, chart, and artifact log.";
+  if (!state.dashboardData) {
+    return "Refresh the live dashboard to hydrate summary cards and intraday chart data.";
   }
-  return state.latestDashboard.subtitle || state.latestArtifact?.created_at || "";
+  return `${state.dashboardData.subtitle || ""} · ${state.dashboardData.generated_at || ""}`;
 }
 
 function renderSummaryStrip() {
-  const cards = state.latestDashboard?.summary_cards || [];
+  const cards = state.dashboardData?.summary_cards || [];
   if (!cards.length) {
-    return `<div class="empty-state">Summary cards will appear after the first successful generation.</div>`;
+    return `<div class="empty-state">Summary cards will appear after the first live refresh.</div>`;
   }
   return cards
     .map((card) => {
@@ -287,17 +243,17 @@ function renderSummaryStrip() {
 }
 
 function renderHeroChart() {
-  const cards = state.latestDashboard?.stock_cards || [];
+  const cards = state.dashboardData?.stock_cards || [];
   const selected = cards[state.selectedStockIndex] || cards[0];
   if (!selected) {
-    return `<div class="empty-state">No stock chart data in the selected artifact yet.</div>`;
+    return `<div class="empty-state">No stock chart data in the selected dashboard yet.</div>`;
   }
   return `
     <div class="hero-header">
       <div class="hero-title-block">
         <div class="hero-title-row">
           <span class="hero-symbol">${escapeHtml(selected.market || state.market.toUpperCase())}</span>
-          <span class="ghost-chip">${(selected.chart?.interval_minutes || state.latestArtifact?.interval_minutes || 10)}m candles</span>
+          <span class="ghost-chip">${(selected.chart?.interval_minutes || state.intervalMinutes)}m candles</span>
         </div>
         <h2 class="hero-title">${escapeHtml(selected.name)}</h2>
         <div class="hero-price-row">
@@ -330,7 +286,7 @@ function renderHeroChart() {
       <div class="hero-notes">
         ${(selected.chart?.segments || []).map((segment) => `<span class="ghost-chip">${escapeHtml(segment.session)}</span>`).join("")}
       </div>
-      <a class="button secondary" href="${state.latestArtifact?.preview_url || "#"}" target="_blank" rel="noreferrer">Open Rendered Image</a>
+      <span class="ghost-chip">${escapeHtml(state.dashboardData?.generated_at || "")}</span>
     </div>
   `;
 }
@@ -356,26 +312,28 @@ function renderWatchlistItems() {
     .join("");
 }
 
-function renderArtifacts() {
-  if (!state.artifacts.length) {
-    return `<div class="empty-state">Generated outputs will appear here.</div>`;
+function renderDashboardMeta() {
+  if (!state.dashboardData) {
+    return `<div class="empty-state">Live dashboard metadata will appear here after refresh.</div>`;
   }
-  return state.artifacts
-    .slice(0, 6)
-    .map(
-      (artifact) => `
-        <article class="artifact-card">
-          <div class="artifact-row">
-            <div>
-              <strong>${artifact.market.toUpperCase()} ${artifact.format.toUpperCase()}</strong>
-              <div class="muted mono">${escapeHtml(artifact.created_at)}</div>
-            </div>
-            <a class="button secondary" href="${artifact.preview_url}" target="_blank" rel="noreferrer">Open</a>
-          </div>
-        </article>
-      `
-    )
-    .join("");
+  return `
+    <article class="artifact-card">
+      <div class="artifact-row">
+        <div>
+          <strong>${escapeHtml(state.dashboardData.market.toUpperCase())} LIVE</strong>
+          <div class="muted mono">${escapeHtml(state.dashboardData.generated_at)}</div>
+        </div>
+      </div>
+    </article>
+    <article class="artifact-card">
+      <div class="artifact-row">
+        <div>
+          <strong>${state.dashboardData.summary_cards.length} Summary Cards</strong>
+          <div class="muted mono">${state.dashboardData.stock_cards.length} Symbols</div>
+        </div>
+      </div>
+    </article>
+  `;
 }
 
 function bindEvents() {
@@ -385,20 +343,17 @@ function bindEvents() {
       render();
     });
   });
-
   document.querySelector("#login-form")?.addEventListener("submit", handleLogin);
-
-  const generateForm = document.querySelector("#generate-form");
-  if (generateForm) {
-    generateForm.addEventListener("submit", handleGenerate);
-    generateForm.market?.addEventListener("change", async (event) => {
+  const dashboardForm = document.querySelector("#dashboard-form");
+  if (dashboardForm) {
+    dashboardForm.addEventListener("submit", handleDashboardRefresh);
+    dashboardForm.market?.addEventListener("change", async (event) => {
       state.market = event.target.value;
       await refreshData();
     });
   }
-
   document.querySelector("#watchlist-form")?.addEventListener("submit", handleWatchlistAdd);
-  document.querySelector("#refresh-artifacts")?.addEventListener("click", refreshData);
+  document.querySelector("#refresh-dashboard")?.addEventListener("click", () => loadDashboard(true));
   document.querySelector("#logout-button")?.addEventListener("click", handleLogout);
   document.querySelectorAll("[data-remove]").forEach((button) => {
     button.addEventListener("click", () => removeWatchlist(button.dataset.remove));
@@ -431,44 +386,20 @@ async function handleLogin(event) {
 async function handleLogout() {
   await fetch("/api/logout", { method: "POST" });
   state.session = false;
-  state.artifacts = [];
   state.watchlist = [];
-  state.latestArtifact = null;
-  state.latestDashboard = null;
+  state.dashboardData = null;
   state.selectedStockIndex = 0;
   state.csrfToken = null;
   disposeChart();
   render();
 }
 
-async function handleGenerate(event) {
+async function handleDashboardRefresh(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   state.market = form.get("market");
-  const payload = {
-    market: form.get("market"),
-    format: form.get("format"),
-    interval_minutes: Number(form.get("interval_minutes")),
-    candle_width_scale: Number(form.get("candle_width_scale")),
-    width_px: Number(form.get("width_px")),
-    height_px: form.get("height_px") ? Number(form.get("height_px")) : null,
-    render_scale: Number(form.get("render_scale")),
-    webp_quality: Number(form.get("webp_quality")),
-  };
-  const status = document.querySelector("#generate-status");
-  status.textContent = "Generating artifact...";
-  const response = await fetch("/api/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": state.csrfToken },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Generate failed." }));
-    status.textContent = error.detail || "Generate failed.";
-    return;
-  }
-  status.textContent = "Artifact generated.";
-  await refreshData();
+  state.intervalMinutes = Number(form.get("interval_minutes") || 10);
+  await loadDashboard(true);
 }
 
 async function handleWatchlistAdd(event) {
@@ -488,7 +419,7 @@ async function handleWatchlistAdd(event) {
   });
   if (response.ok) {
     event.currentTarget.reset();
-    await loadWatchlist();
+    await Promise.all([loadWatchlist(), loadDashboard()]);
     render();
   }
 }
@@ -499,7 +430,7 @@ async function removeWatchlist(code) {
     method: "DELETE",
     headers: { "X-CSRF-Token": state.csrfToken },
   });
-  await loadWatchlist();
+  await Promise.all([loadWatchlist(), loadDashboard()]);
   render();
 }
 
@@ -513,37 +444,8 @@ async function refreshData() {
   }
   const sessionPayload = await session.json();
   state.csrfToken = sessionPayload.csrf_token;
-  await Promise.all([loadArtifacts(), loadWatchlist()]);
+  await Promise.all([loadWatchlist(), loadDashboard()]);
   render();
-}
-
-async function loadArtifacts() {
-  const response = await fetch("/api/artifacts");
-  if (!response.ok) {
-    return;
-  }
-  const payload = await response.json();
-  state.artifacts = payload.artifacts;
-  const nextLatest = payload.artifacts[0] || null;
-  const changed = nextLatest?.id !== state.latestArtifact?.id;
-  state.latestArtifact = nextLatest || state.latestArtifact;
-  if (state.latestArtifact && (changed || !state.latestDashboard)) {
-    await loadArtifactDetail(state.latestArtifact.id);
-  }
-}
-
-async function loadArtifactDetail(artifactId) {
-  const response = await fetch(`/api/artifacts/${artifactId}`);
-  if (!response.ok) {
-    state.latestDashboard = null;
-    return;
-  }
-  const payload = await response.json();
-  state.latestDashboard = payload.dashboard;
-  const cards = payload.dashboard?.stock_cards || [];
-  if (state.selectedStockIndex >= cards.length) {
-    state.selectedStockIndex = 0;
-  }
 }
 
 async function loadWatchlist() {
@@ -555,6 +457,34 @@ async function loadWatchlist() {
   state.watchlist = payload.items;
 }
 
+async function loadDashboard(renderAfter = false) {
+  const status = document.querySelector("#dashboard-status");
+  if (status) {
+    status.textContent = "Refreshing live dashboard...";
+  }
+  const params = new URLSearchParams({
+    market: state.market,
+    interval_minutes: String(state.intervalMinutes),
+  });
+  const response = await fetch(`/api/dashboard?${params.toString()}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Dashboard refresh failed." }));
+    if (status) {
+      status.textContent = error.detail || "Dashboard refresh failed.";
+    }
+    return;
+  }
+  state.dashboardData = await response.json();
+  state.intervalMinutes = Number(state.dashboardData.interval_minutes || state.intervalMinutes);
+  state.selectedStockIndex = 0;
+  if (status) {
+    status.textContent = "Dashboard refreshed.";
+  }
+  if (renderAfter) {
+    render();
+  }
+}
+
 function disposeChart() {
   if (chartInstance) {
     chartInstance.dispose();
@@ -564,19 +494,17 @@ function disposeChart() {
 
 function mountHeroChart() {
   const host = document.querySelector("#chart-host");
-  const chartData = state.latestDashboard?.stock_cards?.[state.selectedStockIndex]?.chart;
+  const chartData = state.dashboardData?.stock_cards?.[state.selectedStockIndex]?.chart;
   if (!host || !chartData || !window.echarts) {
     disposeChart();
     return;
   }
-
   const rows = flattenChartSegments(chartData);
   if (!rows.length) {
     disposeChart();
     host.innerHTML = "";
     return;
   }
-
   disposeChart();
   chartInstance = window.echarts.init(host, null, { renderer: "canvas" });
   chartInstance.setOption(buildChartOption(rows, chartData.segments || []), true);
@@ -603,24 +531,18 @@ function flattenChartSegments(chart) {
 }
 
 function buildChartOption(rows, segments) {
-  const palette = state.market === "us"
-    ? { up: "#33d17a", down: "#ff5c7a" }
-    : { up: "#ff6b6b", down: "#4c9bff" };
-
+  const palette = state.market === "us" ? { up: "#33d17a", down: "#ff5c7a" } : { up: "#ff6b6b", down: "#4c9bff" };
   const categories = rows.map((row) => row.label);
   const candleData = rows.map((row) => [row.open, row.close, row.low, row.high]);
   const volumeData = rows.map((row) => ({
     value: row.volume,
     itemStyle: { color: row.close >= row.open ? `${palette.up}88` : `${palette.down}88` },
   }));
-
   let cursor = 0;
   const markAreaData = [];
   for (const segment of segments) {
     const pointCount = (segment.points || []).length;
-    if (!pointCount) {
-      continue;
-    }
+    if (!pointCount) continue;
     const startIndex = cursor;
     const endIndex = cursor + pointCount - 1;
     markAreaData.push([
@@ -628,32 +550,24 @@ function buildChartOption(rows, segments) {
         name: segment.session,
         xAxis: startIndex,
         itemStyle: { color: `${segment.color}12` },
-        label: { color: "#95a3b8", fontFamily: "JetBrains Mono", fontSize: 10 },
+        label: { color: "#95a3b8", fontFamily: "SF Mono", fontSize: 10 },
       },
       { xAxis: endIndex },
     ]);
     cursor += pointCount;
   }
-
   return {
     animation: false,
     backgroundColor: "transparent",
-    textStyle: {
-      color: "#f1f3fc",
-      fontFamily: "JetBrains Mono, monospace",
-    },
-    legend: { show: false },
+    textStyle: { color: "#f1f3fc", fontFamily: "SF Mono, ui-monospace, monospace" },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
       backgroundColor: "rgba(17, 23, 34, 0.94)",
-      borderColor: "rgba(153, 247, 255, 0.16)",
+      borderColor: "rgba(255,255,255,0.12)",
       textStyle: { color: "#f1f3fc" },
     },
-    axisPointer: {
-      link: [{ xAxisIndex: [0, 1] }],
-      label: { backgroundColor: "#20262f" },
-    },
+    axisPointer: { link: [{ xAxisIndex: [0, 1] }], label: { backgroundColor: "#20262f" } },
     grid: [
       { left: 18, right: 64, top: 18, height: "68%" },
       { left: 18, right: 64, top: "79%", height: "14%" },
@@ -704,20 +618,6 @@ function buildChartOption(rows, segments) {
         splitLine: { show: false },
       },
     ],
-    dataZoom: [
-      { type: "inside", xAxisIndex: [0, 1], start: 0, end: 100 },
-      {
-        type: "slider",
-        xAxisIndex: [0, 1],
-        bottom: 4,
-        height: 14,
-        borderColor: "transparent",
-        backgroundColor: "rgba(32, 38, 47, 0.68)",
-        fillerColor: "rgba(153, 247, 255, 0.18)",
-        moveHandleStyle: { color: "#99f7ff" },
-        textStyle: { color: "#95a3b8" },
-      },
-    ],
     series: [
       {
         name: "Price",
@@ -729,10 +629,7 @@ function buildChartOption(rows, segments) {
           borderColor: palette.up,
           borderColor0: palette.down,
         },
-        markArea: {
-          silent: true,
-          data: markAreaData,
-        },
+        markArea: { silent: true, data: markAreaData },
       },
       {
         name: "Volume",
@@ -745,40 +642,20 @@ function buildChartOption(rows, segments) {
   };
 }
 
-function autoInterval(length) {
-  return xAxisStep(length) - 1;
-}
-
 function xAxisStep(length) {
-  if (length > 90) {
-    return 10;
-  }
-  if (length > 70) {
-    return 8;
-  }
-  if (length > 50) {
-    return 6;
-  }
-  if (length > 30) {
-    return 4;
-  }
-  if (length > 18) {
-    return 2;
-  }
+  if (length > 90) return 10;
+  if (length > 70) return 8;
+  if (length > 50) return 6;
+  if (length > 30) return 4;
+  if (length > 18) return 2;
   return 1;
 }
 
 function diffClass(diff) {
-  if (!diff) {
-    return "";
-  }
+  if (!diff) return "";
   const text = String(diff).trim();
-  if (text.startsWith("+")) {
-    return "delta-positive";
-  }
-  if (text.startsWith("-")) {
-    return "delta-negative";
-  }
+  if (text.startsWith("+")) return "delta-positive";
+  if (text.startsWith("-")) return "delta-negative";
   return "";
 }
 
