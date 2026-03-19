@@ -15,7 +15,7 @@ APPSECRET = os.getenv("KIS_APPSECRET", "")
 BASE_URL = os.getenv("KIS_BASE_URL", "") or "https://openapi.koreainvestment.com:9443"
 CANO = os.getenv("KIS_CANO", "")
 ACNT_PRDT_CD = os.getenv("KIS_ACNT_PRDT_CD", "")
-ALPHAVANTAGE_API_KEY = ""
+ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY", "").strip()
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
 LEGACY_WATCHLIST_PATH = CONFIG_DIR / "watchlist.json"
@@ -73,12 +73,13 @@ if secret_obj and (not APPKEY or not APPSECRET):
     except Exception:
         pass
 
-try:
-    ALPHAVANTAGE_API_KEY = str(
-        secret_obj.get("providers", {}).get("alphavantage", {}).get("apiKey", "")
-    ).strip()
-except Exception:
-    ALPHAVANTAGE_API_KEY = ""
+if not ALPHAVANTAGE_API_KEY:
+    try:
+        ALPHAVANTAGE_API_KEY = str(
+            secret_obj.get("providers", {}).get("alphavantage", {}).get("apiKey", "")
+        ).strip()
+    except Exception:
+        ALPHAVANTAGE_API_KEY = ""
 
 if not APPKEY or not APPSECRET:
     print("KIS credentials missing: set KIS_APPKEY and KIS_APPSECRET", file=sys.stderr)
