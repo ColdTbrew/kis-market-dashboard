@@ -45,6 +45,7 @@ uv sync
 export KIS_APPKEY="..."
 export KIS_APPSECRET="..."
 export KIS_BASE_URL="https://openapi.koreainvestment.com:9443"  # optional
+# export KIS_ALLOW_UNSAFE_BASE_URL="1"  # only for local development against a trusted non-default endpoint
 ```
 
 OpenClaw로 바로 보내려면:
@@ -93,6 +94,7 @@ uv run python kis_market_dashboard.py watchlist --help
 - 기본적으로 `.venv/bin/python`을 사용합니다.
 - `OPENCLAW_TARGET`이 있으면 이미지 전송
 - 없으면 생성된 PNG 경로를 stdout으로 출력
+- KIS access token cache is stored under `~/.cache/kis-market-dashboard/access_token.json` with owner-only permissions
 
 생성 결과:
 - `tmp/kis_market_dashboard.kr.json`

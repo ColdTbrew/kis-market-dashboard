@@ -7,6 +7,7 @@ import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from stat import S_IRUSR, S_IWUSR, S_IXUSR
 
 SECRETS_PATH = Path(os.path.expanduser("~/.openclaw/secrets.json"))
 APPKEY = os.getenv("KIS_APPKEY", "")
@@ -17,6 +18,9 @@ ACNT_PRDT_CD = os.getenv("KIS_ACNT_PRDT_CD", "")
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
 LEGACY_WATCHLIST_PATH = CONFIG_DIR / "watchlist.json"
+ALLOWED_KIS_HOSTS = {
+    "openapi.koreainvestment.com",
+}
 
 DEFAULT_WATCHLISTS = {
     "kr": [
@@ -69,6 +73,54 @@ if not APPKEY or not APPSECRET:
     sys.exit(1)
 
 
+def cache_root():
+    xdg_cache = os.getenv("XDG_CACHE_HOME", "").strip()
+    if xdg_cache:
+        root = Path(xdg_cache).expanduser()
+    else:
+        root = Path.home() / ".cache"
+    path = root / "kis-market-dashboard"
+    path.mkdir(parents=True, exist_ok=True)
+    os.chmod(path, S_IRUSR | S_IWUSR | S_IXUSR)
+    return path
+
+
+def secure_write_json(path, payload):
+    serialized = json.dumps(payload, ensure_ascii=False, indent=2)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, S_IRUSR | S_IWUSR)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(serialized)
+        os.chmod(path, S_IRUSR | S_IWUSR)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
+
+
+def validate_base_url():
+    parsed = urllib.parse.urlparse(BASE_URL)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise RuntimeError("KIS_BASE_URL must be an https URL with a hostname")
+
+    if os.getenv("KIS_ALLOW_UNSAFE_BASE_URL", "").strip() == "1":
+        return
+
+    hostname = parsed.hostname.lower()
+    if hostname not in ALLOWED_KIS_HOSTS:
+        allowed = ", ".join(sorted(ALLOWED_KIS_HOSTS))
+        raise RuntimeError(
+            f"Refusing to send KIS credentials to untrusted host '{hostname}'. "
+            f"Use one of: {allowed}. Override only for development with KIS_ALLOW_UNSAFE_BASE_URL=1."
+        )
+
+
+validate_base_url()
+
+
 def http_json(url, method="GET", headers=None, payload=None):
     data = None
     if payload is not None:
@@ -115,7 +167,7 @@ def output_json_path():
 
 
 def token_cache_path():
-    return output_json_path().parent / ".kis_access_token.json"
+    return cache_root() / "access_token.json"
 
 
 def watchlist_path_for_market(market):
@@ -171,10 +223,10 @@ def read_cached_token():
 
 def write_cached_token(token, expires_in):
     expires_at = datetime.now(UTC) + timedelta(seconds=max(0, int(expires_in) - 60))
-    token_cache_path().write_text(json.dumps({
+    secure_write_json(token_cache_path(), {
         "access_token": token,
         "expires_at": expires_at.isoformat(),
-    }))
+    })
 
 
 def get_token():
