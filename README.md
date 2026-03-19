@@ -118,9 +118,10 @@ uv run python kis_market_dashboard.py generate --market kr --no-render
 ```
 
 ## Watchlist CLI
-현재 종목 리스트는 시장별로 따로 관리합니다.
+현재 종목 리스트는 시장별로 로컬 `config/` 아래에서 관리합니다.
 - `config/watchlist.kr.json`
 - `config/watchlist.us.json`
+- 이 파일들은 git에 올리지 않고, 없으면 CLI가 기본값으로 자동 생성합니다.
 
 조회:
 ```bash
