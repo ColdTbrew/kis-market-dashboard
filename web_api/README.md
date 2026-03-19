@@ -1,14 +1,32 @@
-# Web API
+# KIS Command Center Web API
 
-This package provides the new FastAPI backend for the dashboard.
+This is a separate web dashboard app that sits alongside the existing CLI without modifying it.
 
-## Run locally
+## Run
 
 ```bash
-export KIS_DASHBOARD_ADMIN_PASSWORD="..."
-export KIS_DASHBOARD_SESSION_SECRET="..."
-uv run uvicorn web_api.main:app --reload
+cd web_api
+uv run uvicorn app.main:create_app --factory --reload
 ```
 
-The API stores generated artifacts under `tmp/artifacts/<id>/` by default and uses
-`config/watchlist.kr.json` / `config/watchlist.us.json` for watchlist state.
+Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+## Environment
+
+- `KIS_WEB_DASHBOARD_PASSWORD`: required password for login
+- `KIS_WEB_DASHBOARD_SESSION_SECRET`: session signing secret
+
+The API shells out to the existing root CLI:
+
+```bash
+uv run python kis_market_dashboard.py generate ...
+```
+
+That keeps the current CLI/data/render path untouched.
+
+## Tests
+
+```bash
+cd web_api
+uv run pytest tests/test_api.py -q
+```
