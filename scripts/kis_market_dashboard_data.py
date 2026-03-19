@@ -5,6 +5,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from hashlib import sha256
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from stat import S_IRUSR, S_IWUSR, S_IXUSR
@@ -102,12 +103,12 @@ def secure_write_json(path, payload):
 
 
 def validate_base_url():
+    if os.getenv("KIS_ALLOW_UNSAFE_BASE_URL", "").strip() == "1":
+        return
+
     parsed = urllib.parse.urlparse(BASE_URL)
     if parsed.scheme != "https" or not parsed.hostname:
         raise RuntimeError("KIS_BASE_URL must be an https URL with a hostname")
-
-    if os.getenv("KIS_ALLOW_UNSAFE_BASE_URL", "").strip() == "1":
-        return
 
     hostname = parsed.hostname.lower()
     if hostname not in ALLOWED_KIS_HOSTS:
@@ -167,7 +168,8 @@ def output_json_path():
 
 
 def token_cache_path():
-    return cache_root() / "access_token.json"
+    cache_identity = sha256(f"{BASE_URL}\n{APPKEY}".encode("utf-8")).hexdigest()[:16]
+    return cache_root() / f"access_token.{cache_identity}.json"
 
 
 def watchlist_path_for_market(market):
