@@ -78,3 +78,20 @@ def test_web_ui_uses_app_like_system_font_stack() -> None:
     assert '-apple-system' in css
     assert '"SF Pro Display"' in css
     assert '"SF Mono"' in css
+
+
+def test_web_ui_compacts_side_rail_typography() -> None:
+    css = (Path(__file__).resolve().parents[2] / "web_ui" / "styles.css").read_text(encoding="utf-8")
+
+    nav_button = extract_block(css, ".nav button")
+    assert "font-size: 11px;" in nav_button
+    assert "letter-spacing: 0.04em;" in nav_button
+    assert "text-transform: none;" in nav_button
+
+    status_label = extract_block(css, ".status-chip label")
+    assert "font-size: 11px;" in status_label
+    assert "letter-spacing: 0.08em;" in status_label
+    assert "text-transform: none;" in status_label
+
+    module_head = extract_block(css, ".module-head h2,\n.module-head h3")
+    assert "font-size: 22px;" in module_head
