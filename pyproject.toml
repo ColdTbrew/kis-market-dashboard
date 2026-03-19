@@ -4,4 +4,13 @@ version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
   "Pillow==11.3.0",
+  "fastapi==0.135.1",
+  "itsdangerous==2.2.0",
+  "uvicorn==0.42.0",
+]
+
+[dependency-groups]
+dev = [
+  "httpx==0.28.1",
+  "pytest==9.0.2",
 ]
