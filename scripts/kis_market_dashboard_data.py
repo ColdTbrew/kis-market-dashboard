@@ -6,6 +6,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from hashlib import sha256
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from stat import S_IRUSR, S_IWUSR, S_IXUSR
@@ -16,12 +17,14 @@ APPSECRET = os.getenv("KIS_APPSECRET", "")
 BASE_URL = os.getenv("KIS_BASE_URL", "") or "https://openapi.koreainvestment.com:9443"
 CANO = os.getenv("KIS_CANO", "")
 ACNT_PRDT_CD = os.getenv("KIS_ACNT_PRDT_CD", "")
+ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY", "").strip()
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
 LEGACY_WATCHLIST_PATH = CONFIG_DIR / "watchlist.json"
 ALLOWED_KIS_HOSTS = {
     "openapi.koreainvestment.com",
 }
+WTI_CACHE_TTL_SECONDS = 2 * 60 * 60
 
 DEFAULT_WATCHLISTS = {
     "kr": [
@@ -57,9 +60,15 @@ SUMMARY_ITEMS_BY_MARKET = {
     ],
 }
 
-if SECRETS_PATH.exists() and (not APPKEY or not APPSECRET):
+secret_obj = {}
+if SECRETS_PATH.exists():
     try:
         secret_obj = json.loads(SECRETS_PATH.read_text())
+    except Exception:
+        secret_obj = {}
+
+if secret_obj and (not APPKEY or not APPSECRET):
+    try:
         kis = secret_obj.get("providers", {}).get("kis", {})
         APPKEY = APPKEY or kis.get("appkey", "")
         APPSECRET = APPSECRET or kis.get("appsecret", "")
@@ -68,6 +77,14 @@ if SECRETS_PATH.exists() and (not APPKEY or not APPSECRET):
         ACNT_PRDT_CD = ACNT_PRDT_CD or str(kis.get("acnt_prdt_cd", ""))
     except Exception:
         pass
+
+if not ALPHAVANTAGE_API_KEY:
+    try:
+        ALPHAVANTAGE_API_KEY = str(
+            secret_obj.get("providers", {}).get("alphavantage", {}).get("apiKey", "")
+        ).strip()
+    except Exception:
+        ALPHAVANTAGE_API_KEY = ""
 
 if not APPKEY or not APPSECRET:
     print("KIS credentials missing: set KIS_APPKEY and KIS_APPSECRET", file=sys.stderr)
@@ -172,6 +189,76 @@ def token_cache_path():
     return cache_root() / f"access_token.{cache_identity}.json"
 
 
+def token_lock_path():
+    return output_json_path().parent / ".kis_access_token.lock"
+
+
+def cache_path(name):
+    return output_json_path().parent / name
+
+
+def read_json_cache(path, max_age_seconds):
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+    except Exception:
+        return None
+
+    cached_at = payload.get("cached_at")
+    if not cached_at:
+        return None
+
+    try:
+        cached_dt = datetime.fromisoformat(cached_at)
+    except ValueError:
+        return None
+
+    if cached_dt.tzinfo is None:
+        cached_dt = cached_dt.replace(tzinfo=UTC)
+
+    age = (datetime.now(UTC) - cached_dt).total_seconds()
+    if age > max_age_seconds:
+        return None
+    return payload.get("value")
+
+
+def write_json_cache(path, value):
+    path.write_text(json.dumps({
+        "cached_at": datetime.now(UTC).isoformat(),
+        "value": value,
+    }, ensure_ascii=False, indent=2))
+
+
+def acquire_token_lock(timeout_seconds=30, poll_seconds=0.2):
+    lock_path = token_lock_path()
+    deadline = time.time() + timeout_seconds
+    while True:
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return True
+        except FileExistsError:
+            cached = read_cached_token()
+            if cached:
+                return False
+            if time.time() >= deadline:
+                try:
+                    lock_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                continue
+            time.sleep(poll_seconds)
+
+
+def release_token_lock():
+    try:
+        token_lock_path().unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 def watchlist_path_for_market(market):
     override = os.getenv("KIS_DASHBOARD_WATCHLIST")
     if override:
@@ -236,19 +323,28 @@ def get_token():
     if cached:
         return cached
 
-    body = http_json(
-        f"{BASE_URL}/oauth2/tokenP",
-        method="POST",
-        headers={"content-type": "application/json"},
-        payload={
-            "grant_type": "client_credentials",
-            "appkey": APPKEY,
-            "appsecret": APPSECRET,
-        },
-    )
-    token = body["access_token"]
-    write_cached_token(token, body.get("expires_in", 0))
-    return token
+    acquired = acquire_token_lock()
+    try:
+        cached = read_cached_token()
+        if cached:
+            return cached
+
+        body = http_json(
+            f"{BASE_URL}/oauth2/tokenP",
+            method="POST",
+            headers={"content-type": "application/json"},
+            payload={
+                "grant_type": "client_credentials",
+                "appkey": APPKEY,
+                "appsecret": APPSECRET,
+            },
+        )
+        token = body["access_token"]
+        write_cached_token(token, body.get("expires_in", 0))
+        return token
+    finally:
+        if acquired:
+            release_token_lock()
 
 
 def kis_get(token, path, params, tr_id):
@@ -808,6 +904,66 @@ def commodity_quote_card(token, code, digits=2):
     }
 
 
+def parse_alpha_vantage_wti_points(payload):
+    rows = payload.get("data")
+    if not isinstance(rows, list):
+        raise RuntimeError("Alpha Vantage WTI response missing data array")
+
+    points = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        value = parse_number(row.get("value"))
+        date = str(row.get("date") or "").strip()
+        if value is None or not date:
+            continue
+        points.append({"date": date, "value": value})
+
+    if len(points) < 2:
+        raise RuntimeError("Alpha Vantage WTI response has insufficient history")
+
+    points.sort(key=lambda item: item["date"], reverse=True)
+    return points
+
+
+def fetch_alpha_vantage_wti_payload():
+    if not ALPHAVANTAGE_API_KEY:
+        raise RuntimeError("Alpha Vantage API key missing")
+
+    query = urllib.parse.urlencode({
+        "function": "WTI",
+        "interval": "daily",
+        "apikey": ALPHAVANTAGE_API_KEY,
+    })
+    payload = http_json(f"https://www.alphavantage.co/query?{query}")
+    if "Error Message" in payload:
+        raise RuntimeError(f"Alpha Vantage error: {payload['Error Message']}")
+    if "Note" in payload:
+        raise RuntimeError(f"Alpha Vantage rate limit: {payload['Note']}")
+    return payload
+
+
+def wti_quote_card(digits=2):
+    cache_file = cache_path(".wti_alpha_vantage.json")
+    payload = read_json_cache(cache_file, WTI_CACHE_TTL_SECONDS)
+    if payload is None:
+        payload = fetch_alpha_vantage_wti_payload()
+        write_json_cache(cache_file, payload)
+
+    points = parse_alpha_vantage_wti_points(payload)
+    latest = points[0]["value"]
+    previous = points[1]["value"]
+    diff = latest - previous
+    sign_code = "2" if diff > 0 else "5" if diff < 0 else "3"
+    pct = 0.0 if previous == 0 else (diff / previous) * 100.0
+    return {
+        "price": format_decimal(latest, digits=digits),
+        "diff": format_pct_or_diff_decimal(diff, sign_code, digits=digits),
+        "pct": format_pct(pct, sign_code),
+        "raw_price": latest,
+    }
+
+
 def fx_quote_card_from_price_detail(token, excd, symb, digits=2):
     data = kis_get(
         token,
@@ -938,9 +1094,17 @@ def build_summary_card(token, item):
         }
 
     if item["type"] == "commodity":
-        quote = commodity_quote_card(token, item["code"], digits=item.get("price_digits", 2))
-        if quote["raw_price"] == 0:
-            return unavailable_summary_card(item, "KIS 시세 없음")
+        if item.get("name") == "WTI":
+            try:
+                quote = wti_quote_card(digits=item.get("price_digits", 2))
+            except RuntimeError as exc:
+                return unavailable_summary_card(item, str(exc))
+            if quote["raw_price"] == 0:
+                return unavailable_summary_card(item, "Alpha Vantage 시세 없음")
+        else:
+            quote = commodity_quote_card(token, item["code"], digits=item.get("price_digits", 2))
+            if quote["raw_price"] == 0:
+                return unavailable_summary_card(item, "KIS 시세 없음")
         return {
             "name": item["name"],
             "market": item["market"],

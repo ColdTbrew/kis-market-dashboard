@@ -47,6 +47,7 @@ export KIS_APPSECRET="..."
 export KIS_BASE_URL="https://openapi.koreainvestment.com:9443"  # optional
 # export KIS_BASE_URL="http://210.107.75.78:9443"  # KIS dev/sandbox example
 # export KIS_ALLOW_UNSAFE_BASE_URL="1"  # only for local development against a trusted non-default endpoint
+export ALPHAVANTAGE_API_KEY="..."  # WTI summary card
 ```
 
 OpenClaw로 바로 보내려면:
@@ -62,10 +63,67 @@ uv run python kis_market_dashboard.py generate
 uv run python kis_market_dashboard.py generate --market us
 ```
 
+## 대시보드 예시
+
+### 한국장 대시보드 예시
+```bash
+uv run python kis_market_dashboard.py generate --market kr
+```
+
+의도된 출력 구성:
+- 상단 summary card: KOSPI / KOSDAQ / NASDAQ / USD-KRW / WTI
+- 하단 stock card: 한국장 watchlist 4개 종목
+- 장전 `NXT`, 정규장 `KRX`, 장후 `NXT` 흐름을 같은 카드에서 확인
+
+텔레그램 전송 예시:
+```bash
+uv run python kis_market_dashboard.py generate \
+  --market kr \
+  --out-dir /Users/seunghyuk/.openclaw/workspace/tmp \
+  --send \
+  --target <telegram_chat_id> \
+  --channel telegram \
+  --account default
+```
+
+### 미국장 대시보드 예시
+```bash
+uv run python kis_market_dashboard.py generate --market us
+```
+
+의도된 출력 구성:
+- 상단 summary card: 미국장 기준 주요 매크로/지표
+- 하단 stock card: 미국장 watchlist 4개 종목
+- 미국장 종목은 당일 5분봉 기준으로 카드형 캔들차트 렌더
+
+텔레그램 전송 예시:
+```bash
+uv run python kis_market_dashboard.py generate \
+  --market us \
+  --out-dir /Users/seunghyuk/.openclaw/workspace/tmp \
+  --send \
+  --target <telegram_chat_id> \
+  --channel telegram \
+  --account default
+```
+
+### 출력 포맷 조정 예시
+```bash
+# WEBP 출력
+uv run python kis_market_dashboard.py generate --market us --format webp
+
+# 해상도 조정
+uv run python kis_market_dashboard.py generate --market us --width-px 1440 --render-scale 3
+
+# 렌더 생략(JSON만 생성)
+uv run python kis_market_dashboard.py generate --market kr --no-render
+```
+
 ## Watchlist CLI
-현재 종목 리스트는 시장별로 따로 관리합니다.
+현재 종목 리스트는 시장별로 로컬 `config/` 아래에서 관리합니다.
 - `config/watchlist.kr.json`
 - `config/watchlist.us.json`
+- 이 파일들은 git에 올리지 않고, 없으면 CLI가 기본값으로 자동 생성합니다.
 
 조회:
 ```bash
