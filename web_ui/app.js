@@ -5,6 +5,8 @@ const state = {
   watchlist: [],
   activeView: "generate",
   latestArtifact: null,
+  latestDashboard: null,
+  selectedStockIndex: 0,
   csrfToken: null,
 };
 
@@ -49,6 +51,7 @@ function render() {
   `;
 
   bindEvents();
+  mountInteractiveChart();
 }
 
 function renderLogin() {
@@ -250,7 +253,45 @@ function renderPreview() {
   if (!state.latestArtifact) {
     return `<div class="muted">No preview yet.</div>`;
   }
-  return `<img src="${state.latestArtifact.preview_url}" alt="latest artifact preview" />`;
+  const stocks = state.latestDashboard?.stock_cards || [];
+  const selected = stocks[state.selectedStockIndex] || stocks[0];
+  return `
+    <div class="preview-shell">
+      <div class="preview-toolbar">
+        <div>
+          <div class="eyebrow">Interactive Chart</div>
+          <div class="muted">lightweight-charts candlestick + volume</div>
+        </div>
+        ${
+          stocks.length
+            ? `<div class="field"><label>Symbol</label><select id="stock-select">${stocks
+                .map(
+                  (stock, index) =>
+                    `<option value="${index}" ${index === state.selectedStockIndex ? "selected" : ""}>${stock.name}</option>`
+                )
+                .join("")}</select></div>`
+            : ""
+        }
+      </div>
+      ${
+        selected
+          ? `<div class="chart-shell">
+              <div class="chart-meta">
+                <div>
+                  <div class="chart-title">${selected.name}</div>
+                  <div class="chart-subtitle">${selected.market} · ${selected.price} · ${selected.diff} (${selected.pct})</div>
+                </div>
+                <div class="chart-subtitle">${state.latestArtifact.interval_minutes}m candles</div>
+              </div>
+              <div id="chart-host" class="chart-host"></div>
+              <div class="chart-fallback">
+                <a class="button secondary" href="${state.latestArtifact.preview_url}" target="_blank" rel="noreferrer">Open Rendered Image</a>
+              </div>
+            </div>`
+          : `<div class="muted">No stock chart data in this artifact.</div>`
+      }
+    </div>
+  `;
 }
 
 function bindEvents() {
@@ -285,6 +326,10 @@ function bindEvents() {
   document.querySelectorAll("[data-remove]").forEach((button) => {
     button.addEventListener("click", () => removeWatchlist(button.dataset.remove));
   });
+  document.querySelector("#stock-select")?.addEventListener("change", (event) => {
+    state.selectedStockIndex = Number(event.target.value || 0);
+    render();
+  });
 }
 
 async function handleLogin(event) {
@@ -312,6 +357,7 @@ async function handleLogout() {
   state.artifacts = [];
   state.watchlist = [];
   state.latestArtifact = null;
+  state.latestDashboard = null;
   state.csrfToken = null;
   render();
 }
@@ -344,6 +390,7 @@ async function handleGenerate(event) {
   }
   const data = await response.json();
   state.latestArtifact = data.artifact;
+  state.selectedStockIndex = 0;
   status.textContent = "Artifact generated.";
   await refreshData(false);
 }
@@ -396,7 +443,12 @@ async function loadArtifacts() {
   }
   const payload = await response.json();
   state.artifacts = payload.artifacts;
-  state.latestArtifact = payload.artifacts[0] || state.latestArtifact;
+  const nextLatest = payload.artifacts[0] || null;
+  const changed = nextLatest?.id !== state.latestArtifact?.id;
+  state.latestArtifact = nextLatest || state.latestArtifact;
+  if (state.latestArtifact && (changed || !state.latestDashboard)) {
+    await loadArtifactDetail(state.latestArtifact.id);
+  }
 }
 
 async function loadWatchlist() {
@@ -406,6 +458,110 @@ async function loadWatchlist() {
   }
   const payload = await response.json();
   state.watchlist = payload.items;
+}
+
+async function loadArtifactDetail(artifactId) {
+  const response = await fetch(`/api/artifacts/${artifactId}`);
+  if (!response.ok) {
+    state.latestDashboard = null;
+    return;
+  }
+  const payload = await response.json();
+  state.latestDashboard = payload.dashboard;
+  state.selectedStockIndex = 0;
+}
+
+function flattenChartSegments(chart) {
+  const segments = chart?.segments || [];
+  return segments.flatMap((segment) =>
+    (segment.points || []).map((point) => ({
+      time: point.time,
+      session: segment.session,
+      open: Number(point.open),
+      high: Number(point.high),
+      low: Number(point.low),
+      close: Number(point.close),
+      volume: Number(point.volume || 0),
+    }))
+  );
+}
+
+function marketPalette() {
+  return state.market === "us"
+    ? { up: "#33d17a", down: "#ff5c7a", text: "#f1f3fc", grid: "rgba(156,168,187,0.12)" }
+    : { up: "#ff6b6b", down: "#4c9bff", text: "#f1f3fc", grid: "rgba(156,168,187,0.12)" };
+}
+
+function mountInteractiveChart() {
+  const host = document.querySelector("#chart-host");
+  if (!host || !state.latestDashboard || !window.LightweightCharts) {
+    return;
+  }
+  const stock = state.latestDashboard.stock_cards?.[state.selectedStockIndex];
+  const rows = flattenChartSegments(stock?.chart);
+  if (!rows.length) {
+    return;
+  }
+  host.innerHTML = "";
+  const palette = marketPalette();
+  const chart = window.LightweightCharts.createChart(host, {
+    autoSize: true,
+    layout: {
+      background: { color: "#0a0e14" },
+      textColor: palette.text,
+      fontFamily: "JetBrains Mono, monospace",
+    },
+    grid: {
+      vertLines: { color: palette.grid },
+      horzLines: { color: palette.grid },
+    },
+    rightPriceScale: {
+      borderVisible: false,
+    },
+    timeScale: {
+      borderVisible: false,
+      timeVisible: true,
+      secondsVisible: false,
+    },
+    crosshair: {
+      vertLine: { color: "rgba(153,247,255,0.35)" },
+      horzLine: { color: "rgba(153,247,255,0.25)" },
+    },
+  });
+  const candleSeries = chart.addCandlestickSeries({
+    upColor: palette.up,
+    downColor: palette.down,
+    borderUpColor: palette.up,
+    borderDownColor: palette.down,
+    wickUpColor: palette.up,
+    wickDownColor: palette.down,
+    priceLineVisible: false,
+  });
+  candleSeries.setData(
+    rows.map((row) => ({
+      time: `2026-03-19T${row.time}:00+09:00`,
+      open: row.open,
+      high: row.high,
+      low: row.low,
+      close: row.close,
+    }))
+  );
+  const volumeSeries = chart.addHistogramSeries({
+    priceFormat: { type: "volume" },
+    priceScaleId: "",
+    color: "rgba(153, 247, 255, 0.28)",
+  });
+  volumeSeries.priceScale().applyOptions({
+    scaleMargins: { top: 0.82, bottom: 0 },
+  });
+  volumeSeries.setData(
+    rows.map((row) => ({
+      time: `2026-03-19T${row.time}:00+09:00`,
+      value: row.volume,
+      color: row.close >= row.open ? `${palette.up}66` : `${palette.down}66`,
+    }))
+  );
+  chart.timeScale().fitContent();
 }
 
 refreshData();

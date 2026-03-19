@@ -129,6 +129,13 @@ def test_generate_creates_artifact_metadata(
     assert (artifact_dir / "dashboard.json").exists()
     assert (artifact_dir / "dashboard.webp").exists()
 
+    detail_response = client.get(f"/api/artifacts/{payload['artifact']['id']}")
+    assert detail_response.status_code == 200
+    detail_payload = detail_response.json()
+    assert detail_payload["artifact"]["market"] == "kr"
+    assert detail_payload["dashboard"]["market"] == "kr"
+    assert detail_payload["dashboard"]["stocks"] == []
+
 
 def test_index_serves_html(client: TestClient) -> None:
     response = client.get("/")

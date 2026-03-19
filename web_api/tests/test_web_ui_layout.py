@@ -34,3 +34,8 @@ def test_generate_panel_has_overflow_guards() -> None:
 
     field_controls = extract_block(content, ".field input,\n.field select")
     assert "max-width: 100%;" in field_controls
+
+
+def test_web_ui_loads_lightweight_charts() -> None:
+    html = (Path(__file__).resolve().parents[2] / "web_ui" / "index.html").read_text(encoding="utf-8")
+    assert "lightweight-charts.standalone.production.js" in html

@@ -138,7 +138,11 @@ def create_app(root_dir: Path | None = None) -> FastAPI:
 
     @app.get("/api/artifacts/{artifact_id}")
     def get_artifact(artifact_id: str, _: bool = Depends(require_auth)) -> dict[str, object]:
-        return {"artifact": read_metadata(artifacts_root / artifact_id)}
+        artifact_dir = artifacts_root / artifact_id
+        return {
+            "artifact": read_metadata(artifact_dir),
+            "dashboard": read_dashboard(artifact_dir),
+        }
 
     @app.get("/api/artifacts/{artifact_id}/download")
     def download_artifact(artifact_id: str, _: bool = Depends(require_auth)) -> Response:
@@ -274,3 +278,10 @@ def read_metadata(path: Path) -> dict[str, object]:
     if not metadata_path.exists():
         raise HTTPException(status_code=404, detail="artifact not found")
     return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
+def read_dashboard(path: Path) -> dict[str, object]:
+    dashboard_path = path / "dashboard.json"
+    if not dashboard_path.exists():
+        raise HTTPException(status_code=404, detail="dashboard payload not found")
+    return json.loads(dashboard_path.read_text(encoding="utf-8"))
