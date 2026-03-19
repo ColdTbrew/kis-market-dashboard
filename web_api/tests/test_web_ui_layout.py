@@ -68,3 +68,13 @@ def test_web_ui_uses_flat_terminal_surfaces() -> None:
 
     button_primary = extract_block(css, ".button.primary")
     assert "gradient" not in button_primary
+
+
+def test_web_ui_uses_app_like_system_font_stack() -> None:
+    html = (Path(__file__).resolve().parents[2] / "web_ui" / "index.html").read_text(encoding="utf-8")
+    css = (Path(__file__).resolve().parents[2] / "web_ui" / "styles.css").read_text(encoding="utf-8")
+
+    assert "fonts.googleapis.com" not in html
+    assert '-apple-system' in css
+    assert '"SF Pro Display"' in css
+    assert '"SF Mono"' in css

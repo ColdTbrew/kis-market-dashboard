@@ -33,7 +33,15 @@ body {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Space Grotesk", sans-serif;
+  font-family:
+    "SF Pro Display",
+    "SF Pro Text",
+    "Apple SD Gothic Neo",
+    "Pretendard",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   background: #0a0d12;
   color: var(--on-surface);
 }
@@ -54,11 +62,24 @@ a {
 }
 
 .mono {
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    "JetBrains Mono",
+    Menlo,
+    Consolas,
+    monospace;
 }
 
 .eyebrow {
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
   font-size: 11px;
   letter-spacing: 0.28em;
   text-transform: uppercase;
@@ -138,7 +159,13 @@ a {
   background: rgba(32, 38, 47, 0.54);
   color: var(--on-surface-variant);
   padding: 10px 12px;
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
   font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -166,7 +193,13 @@ a {
 }
 
 .status-chip label {
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
   font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -230,7 +263,13 @@ a {
 }
 
 .field label {
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
   font-size: 11px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -386,7 +425,13 @@ a {
   padding: 10px 12px;
   border-radius: 999px;
   background: #232833;
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
   font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -426,13 +471,26 @@ a {
 }
 
 .summary-chip-price {
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    "JetBrains Mono",
+    Menlo,
+    Consolas,
+    monospace;
   font-size: 22px;
   line-height: 1;
 }
 
 .summary-chip-delta {
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
   font-size: 12px;
   text-align: right;
 }
@@ -482,7 +540,13 @@ a {
 }
 
 .hero-symbol {
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
   font-size: 13px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -504,13 +568,26 @@ a {
 }
 
 .hero-price {
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    "JetBrains Mono",
+    Menlo,
+    Consolas,
+    monospace;
   font-size: 42px;
   line-height: 1;
 }
 
 .hero-delta {
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
   font-size: 16px;
 }
 
@@ -569,7 +646,13 @@ a {
   border-radius: 999px;
   background: rgba(32, 38, 47, 0.4);
   color: var(--on-surface-soft);
-  font-family: "JetBrains Mono", monospace;
+  font-family:
+    "SF Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
