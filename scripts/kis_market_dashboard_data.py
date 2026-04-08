@@ -7,9 +7,11 @@ import urllib.parse
 import urllib.request
 from hashlib import sha256
 import time
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from stat import S_IRUSR, S_IWUSR, S_IXUSR
+from zoneinfo import ZoneInfo
 
 SECRETS_PATH = Path(os.path.expanduser("~/.openclaw/secrets.json"))
 APPKEY = os.getenv("KIS_APPKEY", "")
@@ -25,6 +27,10 @@ ALLOWED_KIS_HOSTS = {
     "openapi.koreainvestment.com",
 }
 WTI_CACHE_TTL_SECONDS = 2 * 60 * 60
+DEFAULT_KIS_MIN_REQUEST_INTERVAL_SECONDS = 0.5
+KIS_RATE_LIMIT_RETRY_DELAYS = (0.7, 1.2, 2.0, 3.0)
+_KIS_REQUEST_LOCK = threading.Lock()
+_LAST_KIS_REQUEST_AT = 0.0
 
 DEFAULT_WATCHLISTS = {
     "kr": [
@@ -42,6 +48,7 @@ DEFAULT_WATCHLISTS = {
 }
 
 DEFAULT_CHART_INTERVAL_MINUTES = 10
+KST = ZoneInfo("Asia/Seoul")
 
 SUMMARY_ITEMS_BY_MARKET = {
     "kr": [
@@ -139,6 +146,46 @@ def validate_base_url():
 validate_base_url()
 
 
+def is_kis_url(url):
+    parsed = urllib.parse.urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    return hostname in ALLOWED_KIS_HOSTS
+
+
+def kis_min_request_interval_seconds():
+    raw = os.getenv("KIS_MIN_REQUEST_INTERVAL_SECONDS", "").strip()
+    if raw:
+        try:
+            return max(0.05, float(raw))
+        except ValueError:
+            pass
+    return DEFAULT_KIS_MIN_REQUEST_INTERVAL_SECONDS
+
+
+def wait_for_kis_rate_window():
+    global _LAST_KIS_REQUEST_AT
+    with _KIS_REQUEST_LOCK:
+        now = time.monotonic()
+        elapsed = now - _LAST_KIS_REQUEST_AT
+        min_interval = kis_min_request_interval_seconds()
+        if elapsed < min_interval:
+            time.sleep(min_interval - elapsed)
+        _LAST_KIS_REQUEST_AT = time.monotonic()
+
+
+def extract_error_detail(body_text):
+    try:
+        detail = json.loads(body_text)
+    except Exception:
+        detail = {"message": body_text}
+    return detail
+
+
+def is_kis_rate_limit_error(detail):
+    text = json.dumps(detail, ensure_ascii=False)
+    return "EGW00201" in text or "초당 거래건수" in text
+
+
 def http_json(url, method="GET", headers=None, payload=None):
     data = None
     if payload is not None:
@@ -148,16 +195,21 @@ def http_json(url, method="GET", headers=None, payload=None):
     for key, value in (headers or {}).items():
         req.add_header(key, value)
 
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            return json.loads(resp.read().decode())
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode()
+    retry_delays = KIS_RATE_LIMIT_RETRY_DELAYS if is_kis_url(url) else ()
+    attempts = len(retry_delays) + 1
+    for attempt in range(attempts):
+        if is_kis_url(url):
+            wait_for_kis_rate_window()
         try:
-            detail = json.loads(body)
-        except Exception:
-            detail = {"message": body}
-        raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode()
+            detail = extract_error_detail(body)
+            if attempt < len(retry_delays) and is_kis_rate_limit_error(detail):
+                time.sleep(retry_delays[attempt])
+                continue
+            raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
 
 
 def normalize_market(value):
@@ -442,6 +494,94 @@ def quote_card(token, code):
         "diff": format_diff(out.get("prdy_vrss"), sign_code),
         "pct": format_pct(out.get("prdy_ctrt"), sign_code),
         "raw_price": parse_int(out.get("stck_prpr")) or 0,
+        "previous_close": parse_int(out.get("stck_prdy_clpr")),
+    }
+
+
+def overtime_quote_card(token, code):
+    data = kis_get(
+        token,
+        "/uapi/domestic-stock/v1/quotations/inquire-overtime-price",
+        {
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": code,
+        },
+        "FHPST02300000",
+    )
+    out = data.get("output", {})
+    sign_code = out.get("ovtm_untp_prdy_vrss_sign")
+    return {
+        "price": format_number(out.get("ovtm_untp_prpr")),
+        "diff": format_diff(out.get("ovtm_untp_prdy_vrss"), sign_code),
+        "pct": format_pct(out.get("ovtm_untp_prdy_ctrt"), sign_code),
+        "raw_price": parse_int(out.get("ovtm_untp_prpr")) or 0,
+    }
+
+
+def should_use_kr_overtime_quote(now=None):
+    kst_now = now or datetime.now(KST)
+    return kst_now.strftime("%H%M%S") >= "160000"
+
+
+def best_kr_quote_card(token, code):
+    quote = quote_card(token, code)
+    if not should_use_kr_overtime_quote():
+        return quote
+
+    try:
+        overtime = overtime_quote_card(token, code)
+    except RuntimeError:
+        return quote
+    return overtime if overtime["raw_price"] > 0 else quote
+
+
+def diff_sign_code(value):
+    if value is None:
+        return None
+    if value < 0:
+        return "5"
+    if value > 0:
+        return "2"
+    return "3"
+
+
+def latest_chart_point(chart):
+    latest = None
+    for segment in chart.get("segments", []):
+        for point in segment.get("points", []):
+            if latest is None or point.get("time_raw", "") > latest.get("time_raw", ""):
+                latest = point
+    return latest
+
+
+def chart_close_quote_card(base_quote, chart):
+    if not should_use_kr_overtime_quote():
+        return None
+
+    point = latest_chart_point(chart)
+    if not point:
+        return None
+
+    raw_price = parse_int(point.get("close")) or parse_int(point.get("price")) or 0
+    if raw_price <= 0:
+        return None
+
+    previous_close = base_quote.get("previous_close")
+    if previous_close:
+        diff_value = raw_price - previous_close
+        pct_value = (diff_value / previous_close) * 100 if previous_close else None
+        sign_code = diff_sign_code(diff_value)
+        diff = format_diff(diff_value, sign_code)
+        pct = format_pct(pct_value, sign_code)
+    else:
+        diff = base_quote.get("diff", "-")
+        pct = base_quote.get("pct", "-")
+
+    return {
+        "price": format_number(raw_price),
+        "diff": diff,
+        "pct": pct,
+        "raw_price": raw_price,
     }
 
 
@@ -810,8 +950,9 @@ def aggregate_chart(chart, minutes=None):
 
 
 def build_stock_card(token, name, code, market):
-    quote = quote_card(token, code)
     chart = aggregate_chart(fetch_intraday_chart(token, code), minutes=chart_interval_minutes())
+    regular_quote = quote_card(token, code)
+    quote = chart_close_quote_card(regular_quote, chart) or best_kr_quote_card(token, code)
     return {
         "name": name,
         "market": market,
