@@ -63,6 +63,145 @@ export OPENCLAW_CHANNEL="telegram"
 export OPENCLAW_ACCOUNT="default"
 ```
 
+## OpenClaw Agent Client Integration
+
+이 저장소는 OpenClaw agent client에서 "로컬 repo + wrapper script" 조합으로 사용하는 방식이 가장 단순하고 관리하기 쉽습니다.
+
+권장 구성은 다음과 같습니다.
+
+1. 이 repo를 원하는 workspace 아래에 clone
+2. workspace 쪽 wrapper script 하나를 둬서 `uv run python kis_market_dashboard.py generate ... --send` 를 감싼다
+3. agent client에는 이 repo에 포함된 skill 또는 workspace local skill을 통해 "이 repo를 우선 사용하라"는 컨텍스트를 전달한다
+
+예시 wrapper:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="/ABS/PATH/TO/workspace/kis-market-dashboard"
+OUT_DIR="${KIS_DASHBOARD_OUT_DIR:-/ABS/PATH/TO/workspace/tmp}"
+MARKET="${KIS_DASHBOARD_MARKET:-kr}"
+TARGET="${OPENCLAW_TARGET:-channel:YOUR_CHANNEL_ID}"
+CHANNEL="${OPENCLAW_CHANNEL:-discord}"
+ACCOUNT="${OPENCLAW_ACCOUNT:-default}"
+
+mkdir -p "$OUT_DIR"
+cd "$ROOT"
+
+exec uv run python kis_market_dashboard.py generate \
+  --market "$MARKET" \
+  --out-dir "$OUT_DIR" \
+  --send \
+  --target "$TARGET" \
+  --channel "$CHANNEL" \
+  --account "$ACCOUNT" \
+  "$@"
+```
+
+### Bundled skill in this repo (`skills/kis-market-dashboard/SKILL.md`)
+
+이 repo에는 재사용 가능한 skill 예시가 함께 포함되어 있습니다.
+
+- path: `skills/kis-market-dashboard/SKILL.md`
+- 다른 workspace로 repo를 옮겨도 함께 가져가 사용할 수 있음
+- agent client가 workspace local skill만 읽는 환경이라면, 이 파일을 복사하거나 참조하여 local skill로 두면 됨
+
+### Example local skill (`workspace/skills/kis-market-dashboard/SKILL.md`)
+
+아래처럼 로컬 skill을 두면 agent client가 레거시 실험 스크립트 대신 이 repo를 우선 사용하도록 유도하기 좋습니다.
+
+```md
+---
+name: kis-market-dashboard
+description: Generate and send the KIS market dashboard using the local `kis-market-dashboard` repo and OpenClaw delivery. Use when the user asks for KR/US market dashboard generation, KIS dashboard image delivery to Discord/Telegram, watchlist updates, or debugging this dashboard pipeline.
+---
+
+# KIS Market Dashboard
+
+Use the local repo-backed flow instead of rebuilding dashboard logic in-place.
+
+## Default workflow
+
+1. Use the wrapper script first:
+   `/ABS/PATH/TO/workspace/scripts/kis_market_dashboard_send.sh`
+2. The wrapper calls the repo CLI under:
+   `/ABS/PATH/TO/workspace/kis-market-dashboard`
+3. Generated artifacts land in:
+   `/ABS/PATH/TO/workspace/tmp`
+
+## Default command
+
+```bash
+bash /ABS/PATH/TO/workspace/scripts/kis_market_dashboard_send.sh
+```
+
+## Useful overrides
+
+- KR vs US market:
+  `KIS_DASHBOARD_MARKET=kr` or `KIS_DASHBOARD_MARKET=us`
+- Custom output dir:
+  `KIS_DASHBOARD_OUT_DIR=/ABS/PATH/TO/workspace/tmp`
+- Custom OpenClaw delivery target:
+  `OPENCLAW_TARGET=channel:...`
+- Custom channel:
+  `OPENCLAW_CHANNEL=discord` or `OPENCLAW_CHANNEL=telegram`
+```
+
+### OpenClaw cron job setup
+
+OpenClaw에 cron 등록을 요청할 때는 "skill + wrapper + 시간대 + 시장별 스케줄"을 한 번에 알려주는 방식이 가장 안정적입니다.
+
+아래는 그대로 복사해서 사용할 수 있는 프롬프트 예시입니다.
+
+```text
+`kis-market-dashboard` 스킬과 로컬 래퍼를 사용해서 KIS 마켓 대시보드 크론을 등록해줘.
+
+사용할 진입점:
+`bash /ABS/PATH/TO/workspace/scripts/kis_market_dashboard_send.sh`
+
+참고 컨텍스트:
+- 스킬: `/ABS/PATH/TO/kis-market-dashboard/skills/kis-market-dashboard/SKILL.md`
+- 실제 repo: `/ABS/PATH/TO/workspace/kis-market-dashboard`
+- 기본 Discord 대상: `channel:YOUR_CHANNEL_ID`
+- 기본 채널: `discord`
+
+중요:
+- 시간대는 전부 `Asia/Seoul` 기준으로 처리해.
+- 이미 비슷한 KIS dashboard cron job이 있으면 중복 생성하지 말고 update해.
+- 이 래퍼 스크립트가 자체적으로 이미지를 보내므로, cron delivery는 중복 알림을 만들지 않게 설계해.
+
+등록해야 할 스케줄:
+
+1. KR 대시보드
+- 한국 시간 기준 평일 오전 8시부터 저녁 8시까지
+- 30분 간격
+- 포함 시간 예시: 08:00, 08:30, 09:00 ... 19:30, 20:00
+- `KIS_DASHBOARD_MARKET=kr` 로 실행
+
+2. US 대시보드
+- 한국 시간 기준 평일 오후 5시부터 밤 12시까지
+- 1시간 간격
+- 포함 시간 예시: 17:00, 18:00, 19:00, 20:00, 21:00, 22:00, 23:00, 00:00
+- `KIS_DASHBOARD_MARKET=us` 로 실행
+- 자정 00:00 실행은 다음 날로 넘어가는 점까지 반영해 정확하게 등록해
+
+실행 방식:
+- `/ABS/PATH/TO/workspace` 에서 exec로 실행
+- isolated 세션 사용
+- 실행 전에 필요한 경우 환경변수로 market만 주입
+- 실행 명령:
+  - KR:
+    `KIS_DASHBOARD_MARKET=kr bash /ABS/PATH/TO/workspace/scripts/kis_market_dashboard_send.sh`
+  - US:
+    `KIS_DASHBOARD_MARKET=us bash /ABS/PATH/TO/workspace/scripts/kis_market_dashboard_send.sh`
+
+원하는 결과:
+- 실제 cron job들을 create/update 완료
+- 각 job의 id, 이름, cron 표현식, 시간대, 실행 명령을 마지막에 간단히 요약
+- KR 20:30은 제외되고 US 00:00은 반드시 포함되게 확인
+```
+
 ## 실행
 ```bash
 uv run python kis_market_dashboard.py generate
@@ -103,9 +242,9 @@ uv run python kis_market_dashboard.py generate --market kr
 ```bash
 uv run python kis_market_dashboard.py generate \
   --market kr \
-  --out-dir /Users/seunghyuk/.openclaw/workspace/tmp \
+  --out-dir /ABS/PATH/TO/workspace/tmp \
   --send \
-  --target <telegram_chat_id> \
+  --target <TARGET_ID_OR_CHANNEL> \
   --channel telegram \
   --account default
 ```
@@ -124,9 +263,9 @@ uv run python kis_market_dashboard.py generate --market us
 ```bash
 uv run python kis_market_dashboard.py generate \
   --market us \
-  --out-dir /Users/seunghyuk/.openclaw/workspace/tmp \
+  --out-dir /ABS/PATH/TO/workspace/tmp \
   --send \
-  --target <telegram_chat_id> \
+  --target <TARGET_ID_OR_CHANNEL> \
   --channel telegram \
   --account default
 ```
