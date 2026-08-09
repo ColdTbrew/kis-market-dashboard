@@ -2,6 +2,54 @@
 
 한국투자증권(KIS) Open API 기반 KR / US 마켓 대시보드 프로젝트.
 
+이 저장소에는 별도 실행 파일인 `indicator_tracker.py`도 포함되어 있습니다. 기존 KIS 대시보드와 섞지 않고, 장 마감 후 Discord에 보내는 장기 지표 리포트를 생성합니다.
+
+## 지표 추적자
+
+평일 18:00 KST에 한 번 실행하는 Discord용 리포트입니다. 한 번의 실행에서 차트별 고해상도 PNG 16장을 생성합니다.
+
+- 투자자 수급: 외국인 누적 순매수와 4주 이동평균, 주체별 누적 순매수
+- 국내시장: KOSPI 일봉·주봉, KOSDAQ·삼성전자·SK하이닉스 일봉
+- 미국시장: NASDAQ Composite와 S&P 500 일봉·주봉
+- 매크로: USD/KRW, USD/JPY 일간, 미국채 10년·국고채 3년·금(GLD) 주간
+
+각 PNG에는 차트 하나만 크게 배치합니다. iPhone 16 Pro의 Discord 전체 화면 뷰어에서 상단 Dynamic Island와 하단 메시지·미리보기 패널을 피할 수 있도록 `1206×1407`(약 6:7) 안전 화면비로 출력합니다. KOSPI·NASDAQ Composite·S&P 500 주봉에만 기본 `9·26·52·26` 일목균형표(전환선·기준선·선행스팬 구름)를 함께 표시합니다. 내부 2배 supersampling으로 캔들과 곡선의 계단 현상을 줄입니다. Discord의 메시지당 첨부 제한을 고려해 `수급·국내시장 7장`, `미국 주가지수 4장`, `환율·금리·금 5장`의 세 메시지로 전송합니다.
+
+데이터 원천은 차트별로 고정되어 있습니다. Toss는 국내 지수·주식·국고채·GLD·투자자 수급에 사용하고, FRED는 NASDAQ Composite·S&P 500·역사 환율·미국 10년물에 사용합니다. 미국 지수 캔들은 같은 날짜의 FRED 지수값을 종가로 고정하고, NASDAQCOM은 Toss ONEQ, SP500은 Toss SPY의 OHLC를 `FRED close × ETF OHLC ÷ ETF close`로 합성합니다. 양쪽에 모두 있는 날짜만 사용하며 ETF 종가가 0인 날짜는 제외합니다. 다른 제공자로 대체하는 폴백은 없으며, 하나라도 실패하면 불완전한 리포트를 보내지 않고 실행 전체가 실패합니다.
+
+Toss 키와 지표 추적자 전용 Discord 웹훅은 `~/.openclaw/secrets.json`에 아래 구조로 둡니다. 실제 값은 저장소 파일이나 cron 인자·환경변수에 복사하지 않습니다.
+
+```json
+{
+  "providers": {
+    "toss": {
+      "client_id": "...",
+      "client_secret": "...",
+      "base_url": "https://openapi.tossinvest.com"
+    },
+    "discord": {
+      "indicator_tracker_webhook_url": "https://discord.com/api/webhooks/.../..."
+    }
+  }
+}
+```
+
+Toss WTS의 `설정 > Open API > 허용 IP`에도 실행 Mac의 공인 IP를 등록해야 합니다.
+
+생성만 실행:
+
+```bash
+uv run python indicator_tracker.py generate
+```
+
+Discord 전송까지 실행:
+
+```bash
+bash scripts/indicator_tracker_send.sh
+```
+
+OpenClaw cron은 `Asia/Seoul` 기준 평일 18:00, 즉 `0 18 * * 1-5`에 위 래퍼를 한 번 실행하도록 등록합니다. 래퍼가 전용 Discord 웹훅으로 이미지 16장을 직접 전송하므로 cron 자체 delivery는 추가하지 않습니다.
+
 ## 목표
 - 관심 종목 가격/등락률을 이미지 카드로 모니터링
 - 장전 `NXT`, 정규장 `KRX`, 장후 `NXT` 흐름을 당일 캔들차트로 확인
